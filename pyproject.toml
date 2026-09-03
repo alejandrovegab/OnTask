@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ontask"
+version = "1.0.0"
+description = "Periodic on-task check-ins with focus tracking and escalating reminder intervals."
+requires-python = ">=3.10"
+dependencies = [
+    "rumps>=0.4.0; sys_platform == 'darwin'",
+    "pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'",
+    "pynput>=1.7.6",
+]
+
+[project.scripts]
+ontask = "ontask.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["ontask*"]

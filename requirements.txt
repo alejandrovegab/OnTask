@@ -1,0 +1,7 @@
+# macOS menu bar shell. Not needed on Windows/Linux (the Tk shell is used there).
+rumps>=0.4.0; sys_platform == "darwin"
+pyobjc-framework-Cocoa>=10.0; sys_platform == "darwin"
+
+# Global hotkeys on every platform. Optional: the app runs without it, you just
+# lose the keyboard shortcuts.
+pynput>=1.7.6
