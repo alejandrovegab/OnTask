@@ -17,7 +17,7 @@ setup(
     options={
         "py2app": {
             "argv_emulation": False,
-            "packages": ["ontask", "rumps", "pynput"],
+            "packages": ["ontask", "rumps", "pynput", "UserNotifications"],
             "plist": {
                 "CFBundleName": "OnTask",
                 "CFBundleDisplayName": "OnTask",

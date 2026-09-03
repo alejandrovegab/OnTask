@@ -1,8 +1,9 @@
 """macOS menu bar shell.
 
-rumps owns the run loop; a repeating timer drives `Controller.poll()`. The
-check-in itself is an AppKit panel (see prompt_macos) rather than a Tk window,
-so there is only ever one run loop in the process.
+rumps owns the run loop; a repeating timer drives `Controller.poll()`. A
+check-in is either an AppKit panel or an actionable notification, depending on
+`prompt_ui`, and the panel is always the fallback: a banner that cannot be
+delivered must never leave a question the user has no way to answer.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import rumps
 from ..app import Controller
 from ..engine import IDLE, PAUSED, RUNNING, ActivePrompt, format_duration
 from ..hotkeys import HotkeyManager
+from .notify_macos import NOT_DETERMINED, Notifier
 from .prompt_macos import PromptWindow
 
 STATUS_SLOTS = ("session", "profile", "interval", "next", "focus")
@@ -22,9 +24,11 @@ class OnTaskApp(rumps.App):
         super().__init__("OnTask", title="OnTask", quit_button=None)
         self.controller = Controller(shell=self)
         self.prompt = PromptWindow(self._on_answer)
+        self.notifier = Notifier(self._on_answer)
         self.hotkeys = HotkeyManager(self.controller)
         self._pending: ActivePrompt | None = None
         self._profile_items: dict[str, rumps.MenuItem] = {}
+        self._warned_notifications = False
         self._poll_seconds = self.controller.config.general.poll_seconds
         self._build_menu()
         self.hotkeys.start()
@@ -52,6 +56,7 @@ class OnTaskApp(rumps.App):
             self.block_item,
             None,
             rumps.MenuItem("Settings...", callback=self._settings),
+            rumps.MenuItem("Permissions...", callback=self._permissions),
             rumps.MenuItem("Quit OnTask", callback=self._quit),
         ]
         self._rebuild_profiles()
@@ -84,6 +89,9 @@ class OnTaskApp(rumps.App):
     def _settings(self, _sender) -> None:
         self.controller.open_settings()
 
+    def _permissions(self, _sender) -> None:
+        rumps.alert(title="OnTask permissions", message=self.permissions_report(), ok="Done")
+
     def _pick_profile(self, sender) -> None:
         self.controller.set_profile(sender.title)
 
@@ -98,27 +106,56 @@ class OnTaskApp(rumps.App):
     def _on_answer(self, yes: bool) -> None:
         self.controller.answer(yes)
 
+    # -- prompt routing ---------------------------------------------------
+
+    def _effective_mode(self, mode: str) -> str:
+        """Resolve the configured style against what can actually be delivered."""
+        if mode == "window":
+            return "window"
+        notifier = self.notifier
+        if notifier.status in (None, NOT_DETERMINED):
+            # Raise the system prompt, but show the window for this check-in so
+            # the question is answerable while permission is still undecided.
+            notifier.request_authorization()
+            return "window"
+        if not notifier.available():
+            self._warn_notifications_once()
+            return "window"
+        return mode
+
+    def _warn_notifications_once(self) -> None:
+        if self._warned_notifications:
+            return
+        self._warned_notifications = True
+        rumps.alert(
+            title="Notifications are unavailable",
+            message=(
+                f"Notifications are {self.notifier.status_text()}, so OnTask is using the "
+                "floating window instead.\n\nEnable them in System Settings > Notifications, "
+                "or set the check-in style to Floating window in Settings to hide this."
+            ),
+            ok="OK",
+        )
+
     # -- Shell interface --------------------------------------------------
 
     def show_prompt(self, prompt: ActivePrompt, controller: Controller) -> None:
         self._pending = prompt
-        mode = controller.config.general.prompt_ui
         sound = controller.config.general.play_sound
+        mode = self._effective_mode(controller.config.general.prompt_ui)
         if mode in ("notification", "both"):
-            self.notify("OnTask", prompt.question())
-        if mode == "window":
-            # "both" deliberately waits: it starts as a banner and only escalates
-            # to the window on the first re-alert.
+            self.notifier.show("OnTask", prompt.question(), actionable=True, sound=sound)
+        else:
             self.prompt.show(prompt.question(), self._subtitle(prompt), sound)
 
     def realert(self, prompt: ActivePrompt) -> None:
-        mode = self.controller.config.general.prompt_ui
         sound = self.controller.config.general.play_sound
+        mode = self._effective_mode(self.controller.config.general.prompt_ui)
         if mode == "notification":
-            self.notify("OnTask", prompt.question())
+            self.notifier.show("OnTask", prompt.question(), actionable=True, sound=sound)
             return
+        # "both" deliberately escalates: banner first, then the window.
         if not self.prompt.visible:
-            # "both" starts as a banner and escalates to the window if ignored.
             self.prompt.show(prompt.question(), self._subtitle(prompt), sound)
         else:
             self.prompt.realert(self._subtitle(prompt), sound)
@@ -126,13 +163,11 @@ class OnTaskApp(rumps.App):
     def close_prompt(self) -> None:
         self._pending = None
         self.prompt.close()
+        self.notifier.withdraw()
 
     def notify(self, title: str, message: str) -> None:
-        try:
-            rumps.notification(title, "", message)
-        except Exception:
-            # Notifications need a signed bundle; ignore when running from source.
-            pass
+        if self.notifier.available():
+            self.notifier.show(title, message, actionable=False, sound=False)
 
     def ask_add_rule(self, target, rule: str, controller: Controller) -> None:
         profile = controller.config.active_profile
@@ -190,6 +225,23 @@ class OnTaskApp(rumps.App):
         if general.poll_seconds != self._poll_seconds:
             self._poll_seconds = general.poll_seconds
             self.timer.interval = self._poll_seconds
+
+    # -- diagnostics ------------------------------------------------------
+
+    def permissions_report(self) -> str:
+        from ..focus.ax import accessibility_trusted
+
+        lines = [
+            f"Notifications: {self.notifier.status_text()}",
+            f"Accessibility: {'granted' if accessibility_trusted() else 'not granted'}",
+            f"Global hotkeys: {'active' if self.hotkeys.available() else 'inactive'}"
+            + (f" - {self.hotkeys.error}" if self.hotkeys.error else ""),
+        ]
+        hint = getattr(self.controller.focus, "permission_hint", lambda: "")()
+        if hint:
+            lines.append("")
+            lines.append(hint)
+        return "\n".join(lines)
 
     def _subtitle(self, prompt: ActivePrompt) -> str:
         snap = self.controller.engine.snapshot()

@@ -1,8 +1,15 @@
-"""macOS focus detection: frontmost app via NSWorkspace, tab URL via AppleScript.
+"""macOS focus detection: frontmost app via NSWorkspace, then the active tab.
 
-Reading a browser's active tab needs Automation permission, which macOS asks
-for once per browser the first time OnTask queries it. If it is denied the
-provider degrades to app-level tracking rather than failing.
+Two routes to a URL, depending on the browser:
+
+* AppleScript for Safari and the Chromium family. Needs Automation permission,
+  which macOS asks for once per browser.
+* The accessibility tree for Gecko browsers, which expose no AppleScript URL.
+  Needs Accessibility permission.
+
+Either can be refused. When that happens the browser silently drops to
+app-level tracking and OnTask stops asking, so a denied prompt never turns into
+a prompt loop.
 """
 
 from __future__ import annotations
@@ -10,11 +17,10 @@ from __future__ import annotations
 import subprocess
 import time
 
-from AppKit import NSWorkspace  # noqa: F401  (import verifies PyObjC is present)
+from AppKit import NSWorkspace
 
+from ..browsers import ACCESSIBILITY, BROWSERS, CHROMIUM, DEFAULT_BROWSERS, SAFARI, UNSUPPORTED
 from . import FocusProvider, FocusTarget
-
-from ..browsers import BROWSERS, DEFAULT_BROWSERS, SAFARI, UNSUPPORTED  # noqa: F401
 
 _SAFARI_SCRIPT = '''
 tell application "{app}"
@@ -32,6 +38,8 @@ tell application "{app}"
 end tell
 '''
 
+CACHE_SECONDS = 0.75
+
 
 def _script_for(flavour: str, app: str) -> str:
     template = _SAFARI_SCRIPT if flavour == SAFARI else _CHROMIUM_SCRIPT
@@ -42,9 +50,10 @@ class MacFocusProvider(FocusProvider):
     def __init__(self, timeout: float = 1.5):
         self.timeout = timeout
         self._workspace = NSWorkspace.sharedWorkspace()
-        # Browsers whose Automation permission was refused; stop asking so the
-        # user is not re-prompted on every poll.
+        # Browsers whose permission was refused; stop asking so the user is not
+        # re-prompted on every poll.
         self.blocked_browsers: set[str] = set()
+        self.needs_accessibility: set[str] = set()
         self.last_error: str = ""
         self._cache: tuple[str, float, tuple[str, str]] | None = None
 
@@ -58,7 +67,11 @@ class MacFocusProvider(FocusProvider):
         flavour = self._browser_flavour(name, bundle, enabled)
         if flavour in (None, UNSUPPORTED) or name in self.blocked_browsers:
             return FocusTarget(app_name=name, bundle_id=bundle)
-        url, title = self._tab_of(name, flavour)
+        try:
+            pid = int(app.processIdentifier())
+        except Exception:
+            pid = -1
+        url, title = self._tab_of(name, flavour, pid)
         return FocusTarget(app_name=name, bundle_id=bundle, url=url, title=title)
 
     def _browser_flavour(self, name: str, bundle: str, enabled: list[str]) -> str | None:
@@ -69,11 +82,20 @@ class MacFocusProvider(FocusProvider):
                 return flavour
         return None
 
-    def _tab_of(self, app_name: str, flavour: str) -> tuple[str, str]:
-        # A short cache keeps rapid polling from spawning osascript constantly.
+    def _tab_of(self, app_name: str, flavour: str, pid: int) -> tuple[str, str]:
+        # A short cache keeps rapid polling from re-querying constantly.
         now = time.monotonic()
-        if self._cache and self._cache[0] == app_name and now - self._cache[1] < 0.75:
+        if self._cache and self._cache[0] == app_name and now - self._cache[1] < CACHE_SECONDS:
             return self._cache[2]
+        if flavour == ACCESSIBILITY:
+            result = self._tab_via_accessibility(app_name, pid)
+        else:
+            result = self._tab_via_applescript(app_name, flavour)
+        if result != ("", ""):
+            self._cache = (app_name, now, result)
+        return result
+
+    def _tab_via_applescript(self, app_name: str, flavour: str) -> tuple[str, str]:
         try:
             proc = subprocess.run(
                 ["osascript", "-e", _script_for(flavour, app_name)],
@@ -93,15 +115,39 @@ class MacFocusProvider(FocusProvider):
                 self.blocked_browsers.add(app_name)
             return "", ""
         lines = (proc.stdout or "").splitlines()
-        result = (lines[0].strip() if lines else "", lines[1].strip() if len(lines) > 1 else "")
-        self._cache = (app_name, now, result)
-        return result
+        return (lines[0].strip() if lines else "", lines[1].strip() if len(lines) > 1 else "")
+
+    def _tab_via_accessibility(self, app_name: str, pid: int) -> tuple[str, str]:
+        if pid < 0:
+            return "", ""
+        try:
+            from .ax import accessibility_trusted, address_bar
+        except Exception as exc:
+            self.last_error = f"{app_name}: {exc}"
+            return "", ""
+        if not accessibility_trusted():
+            self.needs_accessibility.add(app_name)
+            self.last_error = f"{app_name}: Accessibility permission not granted"
+            return "", ""
+        self.needs_accessibility.discard(app_name)
+        try:
+            return address_bar(pid)
+        except Exception as exc:
+            self.last_error = f"{app_name}: {exc}"
+            return "", ""
 
     def permission_hint(self) -> str:
-        if not self.blocked_browsers:
-            return ""
-        names = ", ".join(sorted(self.blocked_browsers))
-        return (
-            f"OnTask cannot read tabs in {names}. Grant access in System Settings > "
-            "Privacy & Security > Automation, then restart OnTask."
-        )
+        parts = []
+        if self.blocked_browsers:
+            names = ", ".join(sorted(self.blocked_browsers))
+            parts.append(
+                f"OnTask cannot read tabs in {names}. Grant access in System Settings > "
+                "Privacy & Security > Automation, then restart OnTask."
+            )
+        if self.needs_accessibility:
+            names = ", ".join(sorted(self.needs_accessibility))
+            parts.append(
+                f"Reading tabs in {names} needs Accessibility. Grant it in System Settings > "
+                "Privacy & Security > Accessibility, then restart OnTask."
+            )
+        return "\n\n".join(parts)

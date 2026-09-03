@@ -12,7 +12,16 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ontask.browsers import BROWSERS, CHROMIUM, SAFARI, UNSUPPORTED
+from ontask.browsers import (
+    ACCESSIBILITY,
+    BROWSERS,
+    CHROMIUM,
+    SAFARI,
+    UNSUPPORTED,
+    flavour_of,
+    needs_accessibility,
+    needs_automation,
+)
 from ontask.focus import FocusTarget
 
 try:
@@ -34,10 +43,21 @@ class BrowserCatalogueTest(unittest.TestCase):
     def test_every_entry_has_a_known_flavour(self):
         for name, (bundle, flavour) in BROWSERS.items():
             self.assertTrue(bundle, name)
-            self.assertIn(flavour, (SAFARI, CHROMIUM, UNSUPPORTED), name)
+            self.assertIn(flavour, (SAFARI, CHROMIUM, ACCESSIBILITY, UNSUPPORTED), name)
 
-    def test_firefox_is_marked_unsupported(self):
-        self.assertEqual(BROWSERS["Firefox"][1], UNSUPPORTED)
+    def test_gecko_browsers_use_the_accessibility_route(self):
+        for name in ("Firefox", "Zen", "LibreWolf"):
+            self.assertEqual(flavour_of(name), ACCESSIBILITY, name)
+            self.assertTrue(needs_accessibility(name), name)
+            self.assertFalse(needs_automation(name), name)
+
+    def test_applescript_browsers_need_automation(self):
+        for name in ("Safari", "Google Chrome", "Arc"):
+            self.assertTrue(needs_automation(name), name)
+            self.assertFalse(needs_accessibility(name), name)
+
+    def test_unknown_browser_is_unsupported(self):
+        self.assertEqual(flavour_of("Netscape Navigator"), UNSUPPORTED)
 
 
 class FocusTargetTest(unittest.TestCase):
@@ -64,12 +84,14 @@ class MacFocusProviderTest(unittest.TestCase):
         provider = MacFocusProvider.__new__(MacFocusProvider)
         provider.timeout = 1.0
         provider.blocked_browsers = set()
+        provider.needs_accessibility = set()
         provider.last_error = ""
         provider._cache = None
         provider._workspace = mock.Mock()
         app = mock.Mock()
         app.localizedName.return_value = app_name
         app.bundleIdentifier.return_value = bundle
+        app.processIdentifier.return_value = 4242
         provider._workspace.frontmostApplication.return_value = app
         stdout, code, stderr = script_result
         self._run = mock.Mock(return_value=mock.Mock(returncode=code, stdout=stdout, stderr=stderr))
@@ -107,12 +129,40 @@ class MacFocusProviderTest(unittest.TestCase):
         self.assertIn("Safari", provider.blocked_browsers)
         self.assertIn("System Settings", provider.permission_hint())
 
-    def test_firefox_falls_back_to_app_only(self):
+    def test_firefox_reads_the_address_bar_instead_of_applescript(self):
         provider = self._provider("Firefox", "org.mozilla.firefox")
-        with mock.patch("subprocess.run", self._run):
+        with mock.patch("subprocess.run", self._run), \
+             mock.patch("ontask.focus.ax.accessibility_trusted", return_value=True), \
+             mock.patch("ontask.focus.ax.address_bar", return_value=("https://github.com/x", "GitHub")):
             target = provider.current(["Firefox"])
-        self._run.assert_not_called()
+        self._run.assert_not_called()  # never shells out to osascript
+        self.assertEqual(target.host, "github.com")
+        self.assertEqual(target.title, "GitHub")
+
+    def test_firefox_without_accessibility_degrades_to_app_only(self):
+        provider = self._provider("Firefox", "org.mozilla.firefox")
+        with mock.patch("ontask.focus.ax.accessibility_trusted", return_value=False):
+            target = provider.current(["Firefox"])
         self.assertEqual(target.app_name, "Firefox")
+        self.assertEqual(target.url, "")
+        self.assertIn("Firefox", provider.needs_accessibility)
+        self.assertIn("Accessibility", provider.permission_hint())
+
+    def test_accessibility_errors_do_not_propagate(self):
+        provider = self._provider("Firefox", "org.mozilla.firefox")
+        with mock.patch("ontask.focus.ax.accessibility_trusted", return_value=True), \
+             mock.patch("ontask.focus.ax.address_bar", side_effect=RuntimeError("tree changed")):
+            target = provider.current(["Firefox"])
+        self.assertEqual(target.url, "")
+        self.assertIn("tree changed", provider.last_error)
+
+    def test_hint_covers_both_permission_kinds(self):
+        provider = self._provider("Safari", "com.apple.Safari")
+        provider.blocked_browsers.add("Safari")
+        provider.needs_accessibility.add("Firefox")
+        hint = provider.permission_hint()
+        self.assertIn("Automation", hint)
+        self.assertIn("Accessibility", hint)
 
     def test_result_is_cached_between_rapid_polls(self):
         provider = self._provider("Safari", "com.apple.Safari", ("https://a.com\nA\n", 0, ""))

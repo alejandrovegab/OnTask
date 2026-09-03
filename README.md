@@ -58,17 +58,26 @@ A `*` and the session timer appear in the menu bar once a session is running.
 
 ### macOS permissions
 
-Two prompts on first use, both expected:
+Three, all optional — OnTask degrades rather than breaks when any is refused.
+Check the current state any time from **Permissions...** in the menu.
 
-- **Automation** — one prompt per browser, the first time OnTask reads a tab.
-  Decline it and that browser silently drops to app-level tracking; OnTask stops
-  asking. Grant it later in System Settings → Privacy & Security → Automation.
-- **Accessibility** — needed by `pynput` for the global hotkeys. Without it the
-  app works fine, you just have to click the buttons.
+| Permission | Needed for | If refused |
+| --- | --- | --- |
+| **Automation** | Reading tabs in Safari and Chromium browsers. One prompt per browser. | That browser drops to app-level tracking. OnTask stops asking. |
+| **Accessibility** | Global hotkeys, and reading the Firefox address bar. | Hotkeys off, Firefox tracked app-level. Buttons still work. |
+| **Notifications** | Banner check-ins with Yes/No buttons. | Falls back to the floating window, and says so once. |
 
-Running from source means the prompts name your terminal. Build a bundle
-(`python setup_app.py py2app`) and they name OnTask instead, which also enables
-notification banners.
+Notification permission is only ever requested if you actually select a
+notification check-in style; OnTask reads the current status without raising a
+dialog otherwise.
+
+Running from source means the prompts name your terminal and banners say
+"Python". Build a bundle so they say OnTask:
+
+```sh
+./.venv/bin/pip install py2app
+./.venv/bin/python setup_app.py py2app
+```
 
 ## Using it
 
@@ -82,6 +91,7 @@ Everything hangs off the menu bar icon:
 | Approve *thing* | Adds whatever you are looking at to the approved list. |
 | Block *thing* | Adds it to the blocked list instead. |
 | Settings... | Opens the settings window. |
+| Permissions... | Shows which grants are active and how to fix the missing ones. |
 
 The top of the menu always shows elapsed time, current profile, where you are on
 the ladder, time until the next check-in, and how the current window classifies.
@@ -97,6 +107,22 @@ the ladder, time until the next check-in, and how the current window classifies.
 When the check-in window is focused, plain `Y` and `N` work too. Rebind or blank
 them out in Settings → General using [pynput syntax](https://pynput.readthedocs.io/en/latest/keyboard.html#global-hotkeys),
 e.g. `<ctrl>+<alt>+f`.
+
+### Browsers
+
+Two different mechanisms, because Firefox does not support the first:
+
+- **Safari and the Chromium family** (Chrome, Arc, Brave, Edge, Vivaldi, Opera,
+  Dia) are read with AppleScript. Exact, cheap, and gives the real tab URL.
+- **Firefox and other Gecko browsers** (Firefox Developer Edition, Zen,
+  LibreWolf) expose no AppleScript URL, so OnTask walks the accessibility tree
+  to read the address bar. This is best effort: it depends on the browser's
+  internal view hierarchy and can break across releases. When it fails, that
+  browser falls back to app-level tracking rather than erroring.
+
+Address bar text that is not a URL — a half-typed search, `about:blank` — is
+ignored rather than guessed at. Turn any browser off in Settings → General to
+skip URL tracking for it entirely.
 
 ### Rules
 
@@ -143,8 +169,8 @@ changes within one poll, no restart needed.
 | `no_response.renag_seconds` | `60` | Gap between re-alerts. |
 | `no_response.max_alerts` | `3` | Alerts before it counts as a no. |
 | `poll_seconds` | `2.0` | How often the frontmost window is sampled. |
-| `prompt_ui` | `window` | Or `notification`, or `both` (banner, escalating to the window). |
-| `browsers` | Safari, Chrome, Arc, Brave, Edge | Which browsers get URL tracking. |
+| `prompt_ui` | `window` | Or `notification` (banner with Yes/No buttons), or `both` (banner, escalating to the window if ignored). |
+| `browsers` | Safari, Chrome, Arc, Brave, Edge, Firefox | Which browsers get URL tracking. |
 | `start_session_on_launch` | `false` | Begin a session at startup. |
 | `play_sound` | `true` | Sound with each check-in. |
 | `show_elapsed_in_menu_bar` | `true` | Show the timer in the menu bar. |
@@ -158,16 +184,16 @@ to `config.json.bad` so the app still starts.
 | --- | --- | --- | --- |
 | Shell | Menu bar | Control window | Control window |
 | App tracking | NSWorkspace | Win32 API | `xdotool` |
-| Tab URLs | Safari + Chromium browsers | not available | not available |
+| Tab URLs | Safari, Chromium browsers, Firefox | not available | not available |
+| Check-in | Floating panel or notification | Window | Window |
 
-Firefox has no AppleScript URL support anywhere, so it is always tracked
-app-level only. Where focus detection is unavailable, OnTask treats the target
-as on-task and falls back to plain ladder reminders rather than nagging.
+Where focus detection is unavailable, OnTask treats the target as on-task and
+falls back to plain ladder reminders rather than nagging.
 
 ## Development
 
 ```sh
-./.venv/bin/python -m unittest discover -s tests   # 50 tests, fake clock, instant
+./.venv/bin/python -m unittest discover -s tests   # 82 tests, fake clock, instant
 ./.venv/bin/python -m ontask --headless            # watch focus detection live
 ./.venv/bin/python -m ontask --settings            # settings window on its own
 ```
@@ -183,8 +209,10 @@ ontask/
   app.py         controller wiring engine to a UI shell
   hotkeys.py     pynput hotkeys, marshalled onto the UI thread
   browsers.py    browser catalogue
-  focus/         macos.py (NSWorkspace + AppleScript), fallback.py (Win32/xdotool)
-  ui/            menubar_macos.py, prompt_macos.py, app_tk.py, prompt_tk.py, settings_app.py
+  focus/         macos.py (NSWorkspace + AppleScript), ax.py (accessibility
+                 address bar), fallback.py (Win32/xdotool)
+  ui/            menubar_macos.py, prompt_macos.py, notify_macos.py,
+                 app_tk.py, prompt_tk.py, settings_app.py
 ```
 
 `engine.py` holds every timing rule and touches nothing platform-specific, which

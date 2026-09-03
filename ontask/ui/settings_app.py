@@ -17,7 +17,7 @@ from tkinter import messagebox, ttk
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from ontask.config import Config, NoResponse, Profile  # noqa: E402
-from ontask.browsers import BROWSERS  # noqa: E402
+from ontask.browsers import ACCESSIBILITY, BROWSERS, UNSUPPORTED  # noqa: E402
 from ontask.ladder import Ladder  # noqa: E402
 
 RULE_HELP = (
@@ -150,6 +150,14 @@ class SettingsWindow:
             width=34,
             values=["Floating window", "Notification only", "Notification, then window"],
         ).grid(row=1, column=1, sticky="w", padx=(10, 0))
+        ttk.Label(
+            box,
+            text="Notification banners carry Yes and No buttons. If notifications are "
+            "denied,\nOnTask falls back to the floating window so a check-in is never "
+            "unanswerable.",
+            foreground="#666",
+            justify="left",
+        ).grid(row=5, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.start_var = tk.BooleanVar()
         self.sound_var = tk.BooleanVar()
         self.menubar_var = tk.BooleanVar()
@@ -181,13 +189,22 @@ class SettingsWindow:
         browser_box = ttk.LabelFrame(tab, text="Track tab URLs in these browsers", padding=10)
         browser_box.pack(fill="x", pady=(12, 0))
         self.browser_vars: dict[str, tk.BooleanVar] = {}
+        notes = {ACCESSIBILITY: "  (needs Accessibility)", UNSUPPORTED: "  (app only)"}
         for index, name in enumerate(BROWSERS):
             var = tk.BooleanVar()
             self.browser_vars[name] = var
-            note = "  (app only - no URL support)" if BROWSERS[name][1] == "unsupported" else ""
-            ttk.Checkbutton(browser_box, text=name + note, variable=var).grid(
-                row=index // 2, column=index % 2, sticky="w", padx=(0, 18)
-            )
+            ttk.Checkbutton(
+                browser_box, text=name + notes.get(BROWSERS[name][1], ""), variable=var
+            ).grid(row=index // 2, column=index % 2, sticky="w", padx=(0, 18))
+        ttk.Label(
+            browser_box,
+            text="Safari and Chromium browsers are read with AppleScript (Automation "
+            "permission).\nFirefox and other Gecko browsers have no AppleScript URL, so "
+            "their address bar is\nread from the accessibility tree instead - best effort, "
+            "and needs Accessibility.",
+            foreground="#666",
+            justify="left",
+        ).grid(row=(len(BROWSERS) + 1) // 2, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
     def _row(self, parent, row: int, label: str, var: tk.StringVar, width: int = 12) -> None:
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", pady=3)
