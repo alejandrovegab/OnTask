@@ -1,10 +1,15 @@
 """Reading a browser's address bar through the macOS Accessibility API.
 
-Firefox exposes no AppleScript URL property, so the only way to tell which site
-is in front is to walk its accessibility tree and read the URL bar's text. That
-is inherently more fragile than AppleScript - it depends on the browser's
-internal view hierarchy, which can change between releases - so it is opt-in per
-browser and every failure degrades to app-level tracking rather than raising.
+Gecko browsers expose no AppleScript URL property, so the only way to tell which
+site is in front is to walk the accessibility tree and read the URL bar's text.
+That is inherently more fragile than AppleScript - it depends on the browser's
+internal view hierarchy, which can change between releases - so every failure
+degrades to app-level tracking rather than raising.
+
+The bar is not always the same kind of control: Firefox exposes it as a text
+field, while Zen exposes it as a combo box. Both roles are searched, and a node
+whose description names it as the address bar is preferred over one that merely
+happens to hold something URL-shaped.
 
 Needs Accessibility permission, the same grant the global hotkeys use.
 """
@@ -18,8 +23,12 @@ from ApplicationServices import (
     AXUIElementCopyAttributeValue,
     AXUIElementCreateApplication,
     kAXChildrenAttribute,
+    kAXComboBoxRole,
+    kAXDescriptionAttribute,
     kAXFocusedWindowAttribute,
+    kAXIdentifierAttribute,
     kAXRoleAttribute,
+    kAXRoleDescriptionAttribute,
     kAXTextFieldRole,
     kAXTitleAttribute,
     kAXValueAttribute,
@@ -32,6 +41,21 @@ _DOMAIN = re.compile(r"^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?(/.*)?$", re.IGNORECASE)
 # The tree is wide; these bounds keep a poll cheap even if the walk finds nothing.
 MAX_NODES = 400
 MAX_DEPTH = 12
+
+# Roles the address bar turns up as: a text field in Firefox, a combo box in Zen.
+URL_BAR_ROLES = (kAXTextFieldRole, kAXComboBoxRole)
+
+# Wording browsers put on the address bar. Matching one of these promotes a
+# candidate above any other control that merely holds URL-shaped text.
+URL_BAR_HINTS = (
+    "address",
+    "search with",
+    "search or enter",
+    "enter address",
+    "url",
+    "location",
+    "awesomebar",
+)
 
 
 def accessibility_trusted() -> bool:
@@ -94,6 +118,25 @@ def normalise_url(value) -> str:
     return f"https://{text}" if _DOMAIN.match(text) else ""
 
 
+def _looks_like_the_url_bar(node) -> bool:
+    """Whether a node labels itself as the address bar.
+
+    Browsers describe it differently - Firefox says "Search with ... or enter
+    address", Zen just says "Search..." - so a miss here is not a rejection, only
+    the absence of a promotion.
+    """
+    for attribute in (
+        kAXDescriptionAttribute,
+        kAXTitleAttribute,
+        kAXRoleDescriptionAttribute,
+        kAXIdentifierAttribute,
+    ):
+        text = str(_copy(node, attribute) or "").lower()
+        if text and any(hint in text for hint in URL_BAR_HINTS):
+            return True
+    return False
+
+
 def address_bar(pid: int) -> tuple[str, str]:
     """Best-effort (url, window title) for the frontmost window of `pid`."""
     if not accessibility_trusted():
@@ -110,17 +153,22 @@ def address_bar(pid: int) -> tuple[str, str]:
     title = str(_copy(window, kAXTitleAttribute) or "")
 
     # Breadth-first: the toolbar sits near the top of the tree, so the URL bar is
-    # reached long before the bounds below matter.
+    # reached long before the bounds below matter. A self-described address bar
+    # wins outright; otherwise the shallowest URL-shaped value is kept, which is
+    # the toolbar rather than anything down in the page.
+    fallback = ""
     queue = [(window, 0)]
     visited = 0
     while queue and visited < MAX_NODES:
         node, depth = queue.pop(0)
         visited += 1
-        if _copy(node, kAXRoleAttribute) == kAXTextFieldRole:
+        if _copy(node, kAXRoleAttribute) in URL_BAR_ROLES:
             url = normalise_url(_copy(node, kAXValueAttribute))
             if url:
-                return url, title
+                if _looks_like_the_url_bar(node):
+                    return url, title
+                fallback = fallback or url
         if depth < MAX_DEPTH:
             for child in _copy(node, kAXChildrenAttribute) or []:
                 queue.append((child, depth + 1))
-    return "", title
+    return fallback, title

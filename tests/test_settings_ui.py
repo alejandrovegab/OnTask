@@ -7,6 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from ontask.browsers import ACCESSIBILITY
 from ontask.config import Config
 
 try:
@@ -110,11 +111,41 @@ class SettingsWindowTest(unittest.TestCase):
             self.window.remove_profile()
         self.assertNotIn("New Profile", self.window.config.profile_names())
 
-    def test_browser_toggles_persist(self):
-        for name, var in self.window.browser_vars.items():
-            var.set(name in ("Safari", "Firefox"))
+    def test_only_safari_is_listed_before_anything_is_added(self):
+        self.assertEqual([b.name for b in self.window.browsers], ["Safari"])
+        self.assertIn("com.apple.Safari", self.window.browser_list.get(0))
+
+    def test_adding_a_browser_from_finder_keeps_the_bundle_identity(self):
+        import plistlib
+        import tempfile
+        from pathlib import Path as _Path
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            app = _Path(tmp) / "Zen.app"
+            (app / "Contents" / "Resources").mkdir(parents=True)
+            with (app / "Contents" / "Info.plist").open("wb") as handle:
+                plistlib.dump(
+                    {"CFBundleIdentifier": "app.zen-browser.zen", "CFBundleName": "Zen"}, handle
+                )
+            with mock.patch("tkinter.filedialog.askopenfilename", return_value=str(app)), \
+                 mock.patch("tkinter.messagebox.showinfo") as told:
+                self.window.add_browser()
+                self.window.add_browser()  # adding twice is a no-op
+            told.assert_called_once()
+            self.window.save()
+
+        browsers = Config.load(self.path).general.browsers
+        self.assertEqual([b.name for b in browsers], ["Safari", "Zen"])
+        zen = browsers[1]
+        self.assertEqual(zen.bundle_id, "app.zen-browser.zen")
+        self.assertEqual(zen.flavour, ACCESSIBILITY)
+
+    def test_removing_a_browser_persists(self):
+        self.window.browser_list.selection_set(0)
+        self.window.remove_browser()
         self.window.save()
-        self.assertEqual(sorted(Config.load(self.path).general.browsers), ["Firefox", "Safari"])
+        self.assertEqual(Config.load(self.path).general.browsers, [])
 
 
 if __name__ == "__main__":

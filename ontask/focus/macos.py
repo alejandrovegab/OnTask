@@ -1,9 +1,16 @@
 """macOS focus detection: frontmost app via NSWorkspace, then the active tab.
 
+Browsers are matched on their bundle id rather than their name, because the two
+are not always the same string - Zen's process reports ``zen`` while it is
+called ``Zen`` everywhere else - and because a bundle id survives the app being
+renamed or moved. The same id is what AppleScript is addressed by.
+
 Two routes to a URL, depending on the browser:
 
 * AppleScript for Safari and the Chromium family. Needs Automation permission,
-  which macOS asks for once per browser.
+  which macOS asks for once per browser. A browser added from Finder that turns
+  out to be scriptable but of unknown dialect is probed once: both forms are
+  tried and whichever answers is remembered for the rest of the run.
 * The accessibility tree for Gecko browsers, which expose no AppleScript URL.
   Needs Accessibility permission.
 
@@ -19,11 +26,19 @@ import time
 
 from AppKit import NSWorkspace
 
-from ..browsers import ACCESSIBILITY, BROWSERS, CHROMIUM, DEFAULT_BROWSERS, SAFARI, UNSUPPORTED
+from ..browsers import (
+    ACCESSIBILITY,
+    APPLESCRIPT,
+    CHROMIUM,
+    SAFARI,
+    UNSUPPORTED,
+    Browser,
+    default_browsers,
+)
 from . import FocusProvider, FocusTarget
 
 _SAFARI_SCRIPT = '''
-tell application "{app}"
+tell application id "{bundle}"
     if (count of windows) is 0 then return ""
     set d to front document
     return (URL of d) & linefeed & (name of d)
@@ -31,7 +46,7 @@ end tell
 '''
 
 _CHROMIUM_SCRIPT = '''
-tell application "{app}"
+tell application id "{bundle}"
     if (count of windows) is 0 then return ""
     set t to active tab of front window
     return (URL of t) & linefeed & (title of t)
@@ -40,10 +55,13 @@ end tell
 
 CACHE_SECONDS = 0.75
 
+# Tried in this order when a browser is scriptable but its dialect is unknown.
+_PROBE_ORDER = (CHROMIUM, SAFARI)
 
-def _script_for(flavour: str, app: str) -> str:
+
+def _script_for(flavour: str, bundle: str) -> str:
     template = _SAFARI_SCRIPT if flavour == SAFARI else _CHROMIUM_SCRIPT
-    return template.format(app=app)
+    return template.format(bundle=bundle)
 
 
 class MacFocusProvider(FocusProvider):
@@ -56,84 +74,109 @@ class MacFocusProvider(FocusProvider):
         self.needs_accessibility: set[str] = set()
         self.last_error: str = ""
         self._cache: tuple[str, float, tuple[str, str]] | None = None
+        # bundle id -> the AppleScript dialect that actually answered.
+        self._dialects: dict[str, str] = {}
 
-    def current(self, browsers: list[str] | None = None) -> FocusTarget:
+    def current(self, browsers: list[Browser] | None = None) -> FocusTarget:
         app = self._workspace.frontmostApplication()
         if app is None:
             return FocusTarget()
         name = str(app.localizedName() or "")
         bundle = str(app.bundleIdentifier() or "")
-        enabled = browsers if browsers is not None else DEFAULT_BROWSERS
-        flavour = self._browser_flavour(name, bundle, enabled)
-        if flavour in (None, UNSUPPORTED) or name in self.blocked_browsers:
+        enabled = browsers if browsers is not None else default_browsers()
+        browser = self._match(name, bundle, enabled)
+        if browser is None or browser.flavour == UNSUPPORTED or browser.name in self.blocked_browsers:
             return FocusTarget(app_name=name, bundle_id=bundle)
         try:
             pid = int(app.processIdentifier())
         except Exception:
             pid = -1
-        url, title = self._tab_of(name, flavour, pid)
+        url, title = self._tab_of(browser, pid)
         return FocusTarget(app_name=name, bundle_id=bundle, url=url, title=title)
 
-    def _browser_flavour(self, name: str, bundle: str, enabled: list[str]) -> str | None:
-        for browser, (browser_bundle, flavour) in BROWSERS.items():
-            if browser not in enabled:
-                continue
-            if name == browser or (bundle and bundle == browser_bundle):
-                return flavour
+    def _match(self, name: str, bundle: str, enabled: list[Browser]) -> Browser | None:
+        for browser in enabled:
+            if browser.matches(name, bundle):
+                return browser
         return None
 
-    def _tab_of(self, app_name: str, flavour: str, pid: int) -> tuple[str, str]:
+    def _tab_of(self, browser: Browser, pid: int) -> tuple[str, str]:
         # A short cache keeps rapid polling from re-querying constantly.
         now = time.monotonic()
-        if self._cache and self._cache[0] == app_name and now - self._cache[1] < CACHE_SECONDS:
+        key = browser.bundle_id or browser.name
+        if self._cache and self._cache[0] == key and now - self._cache[1] < CACHE_SECONDS:
             return self._cache[2]
-        if flavour == ACCESSIBILITY:
-            result = self._tab_via_accessibility(app_name, pid)
+        if browser.flavour == ACCESSIBILITY:
+            result = self._tab_via_accessibility(browser, pid)
         else:
-            result = self._tab_via_applescript(app_name, flavour)
+            result = self._tab_via_applescript(browser)
         if result != ("", ""):
-            self._cache = (app_name, now, result)
+            self._cache = (key, now, result)
         return result
 
-    def _tab_via_applescript(self, app_name: str, flavour: str) -> tuple[str, str]:
+    def _tab_via_applescript(self, browser: Browser) -> tuple[str, str]:
+        target = browser.bundle_id or browser.name
+        if browser.flavour == APPLESCRIPT:
+            dialects = [self._dialects[target]] if target in self._dialects else list(_PROBE_ORDER)
+        else:
+            dialects = [browser.flavour]
+        for dialect in dialects:
+            ok, result = self._run_script(browser, dialect, target)
+            if not ok:
+                # A refused or missing app will not answer in any dialect either.
+                break
+            if result != ("", ""):
+                if browser.flavour == APPLESCRIPT:
+                    self._dialects[target] = dialect
+                return result
+        return "", ""
+
+    def _run_script(self, browser: Browser, dialect: str, target: str) -> tuple[bool, tuple[str, str]]:
+        """Run one dialect. Returns (the app was reachable, (url, title))."""
         try:
             proc = subprocess.run(
-                ["osascript", "-e", _script_for(flavour, app_name)],
+                ["osascript", "-e", _script_for(dialect, target)],
                 capture_output=True,
                 text=True,
                 timeout=self.timeout,
             )
         except (subprocess.TimeoutExpired, OSError) as exc:
-            self.last_error = f"{app_name}: {exc}"
-            return "", ""
+            self.last_error = f"{browser.name}: {exc}"
+            return False, ("", "")
         if proc.returncode != 0:
             err = (proc.stderr or "").strip()
-            self.last_error = f"{app_name}: {err}"
+            self.last_error = f"{browser.name}: {err}"
             # -1743 is "not authorised to send Apple events"; asking again would
             # just re-prompt the user forever.
             if "-1743" in err or "not allowed" in err.lower():
-                self.blocked_browsers.add(app_name)
-            return "", ""
+                self.blocked_browsers.add(browser.name)
+                return False, ("", "")
+            # Any other error is usually the wrong dialect for this browser, so
+            # the caller is free to try the next one.
+            return True, ("", "")
         lines = (proc.stdout or "").splitlines()
-        return (lines[0].strip() if lines else "", lines[1].strip() if len(lines) > 1 else "")
+        return True, (
+            lines[0].strip() if lines else "",
+            lines[1].strip() if len(lines) > 1 else "",
+        )
 
-    def _tab_via_accessibility(self, app_name: str, pid: int) -> tuple[str, str]:
+    def _tab_via_accessibility(self, browser: Browser, pid: int) -> tuple[str, str]:
         if pid < 0:
             return "", ""
         try:
             from .ax import accessibility_trusted, address_bar
         except Exception as exc:
-            self.last_error = f"{app_name}: {exc}"
+            self.last_error = f"{browser.name}: {exc}"
             return "", ""
         if not accessibility_trusted():
-            self.needs_accessibility.add(app_name)
-            self.last_error = f"{app_name}: Accessibility permission not granted"
+            self.needs_accessibility.add(browser.name)
+            self.last_error = f"{browser.name}: Accessibility permission not granted"
             return "", ""
-        self.needs_accessibility.discard(app_name)
+        self.needs_accessibility.discard(browser.name)
         try:
             return address_bar(pid)
         except Exception as exc:
-            self.last_error = f"{app_name}: {exc}"
+            self.last_error = f"{browser.name}: {exc}"
             return "", ""
 
     def permission_hint(self) -> str:

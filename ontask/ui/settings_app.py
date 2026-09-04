@@ -12,12 +12,18 @@ from __future__ import annotations
 import sys
 import tkinter as tk
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from ontask.config import Config, NoResponse, Profile  # noqa: E402
-from ontask.browsers import ACCESSIBILITY, BROWSERS, UNSUPPORTED  # noqa: E402
+from ontask.browsers import (  # noqa: E402
+    ACCESSIBILITY,
+    UNSUPPORTED,
+    Browser,
+    BrowserError,
+    inspect_app,
+)
 from ontask.ladder import Ladder  # noqa: E402
 
 RULE_HELP = (
@@ -187,24 +193,27 @@ class SettingsWindow:
         ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
 
         browser_box = ttk.LabelFrame(tab, text="Track tab URLs in these browsers", padding=10)
-        browser_box.pack(fill="x", pady=(12, 0))
-        self.browser_vars: dict[str, tk.BooleanVar] = {}
-        notes = {ACCESSIBILITY: "  (needs Accessibility)", UNSUPPORTED: "  (app only)"}
-        for index, name in enumerate(BROWSERS):
-            var = tk.BooleanVar()
-            self.browser_vars[name] = var
-            ttk.Checkbutton(
-                browser_box, text=name + notes.get(BROWSERS[name][1], ""), variable=var
-            ).grid(row=index // 2, column=index % 2, sticky="w", padx=(0, 18))
+        browser_box.pack(fill="both", expand=True, pady=(12, 0))
+        self.browsers: list[Browser] = []
+        listing = ttk.Frame(browser_box)
+        listing.pack(fill="both", expand=True)
+        self.browser_list = tk.Listbox(listing, height=5, exportselection=False)
+        self.browser_list.pack(side="left", fill="both", expand=True)
+        buttons = ttk.Frame(listing)
+        buttons.pack(side="left", fill="y", padx=(8, 0))
+        ttk.Button(buttons, text="Add from Finder...", command=self.add_browser).pack(fill="x", pady=1)
+        ttk.Button(buttons, text="Remove", command=self.remove_browser).pack(fill="x", pady=1)
         ttk.Label(
             browser_box,
-            text="Safari and Chromium browsers are read with AppleScript (Automation "
-            "permission).\nFirefox and other Gecko browsers have no AppleScript URL, so "
-            "their address bar is\nread from the accessibility tree instead - best effort, "
-            "and needs Accessibility.",
+            text="Safari is set up already. Add any other browser by choosing its app, so "
+            "OnTask reads\nthe real bundle id and matches it even when the app's process "
+            "name differs.\n\nSafari and Chromium browsers are read with AppleScript "
+            "(Automation permission). Firefox,\nZen and other Gecko browsers have no "
+            "AppleScript URL, so their address bar is read from\nthe accessibility tree "
+            "instead - best effort, and needs Accessibility.",
             foreground="#666",
             justify="left",
-        ).grid(row=(len(BROWSERS) + 1) // 2, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        ).pack(anchor="w", pady=(8, 0))
 
     def _row(self, parent, row: int, label: str, var: tk.StringVar, width: int = 12) -> None:
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", pady=3)
@@ -240,8 +249,8 @@ class SettingsWindow:
         self.toggle_key_var.set(cfg.general.hotkeys.toggle_session)
         self.yes_key_var.set(cfg.general.hotkeys.answer_yes)
         self.no_key_var.set(cfg.general.hotkeys.answer_no)
-        for name, var in self.browser_vars.items():
-            var.set(name in cfg.general.browsers)
+        self.browsers = list(cfg.general.browsers)
+        self._refresh_browser_list()
         self._update_preview()
 
     def _on_profile_selected(self, _event=None) -> None:
@@ -349,6 +358,56 @@ class SettingsWindow:
         self.current_profile = None
         self._load_into_widgets()
 
+    def _refresh_browser_list(self) -> None:
+        self.browser_list.delete(0, "end")
+        for browser in self.browsers:
+            self.browser_list.insert("end", browser.describe())
+
+    def add_browser(self) -> None:
+        """Pick a .app and read its identity out of the bundle."""
+        chosen = filedialog.askopenfilename(
+            parent=self.root,
+            title="Choose a browser",
+            initialdir="/Applications",
+            filetypes=[("Applications", "*.app"), ("All files", "*")],
+        )
+        if not chosen:
+            return
+        try:
+            browser = inspect_app(chosen)
+        except BrowserError as exc:
+            messagebox.showerror("OnTask", str(exc))
+            return
+        for existing in self.browsers:
+            if existing.bundle_id == browser.bundle_id:
+                messagebox.showinfo("OnTask", f"{browser.name} is already in the list.")
+                return
+        if browser.flavour == UNSUPPORTED:
+            keep = messagebox.askyesno(
+                "OnTask",
+                f"{browser.name} offers no way to read the address of its active tab, so "
+                "OnTask can only tell that the app is in front, not which site.\n\n"
+                "Add it anyway?",
+            )
+            if not keep:
+                return
+        self.browsers.append(browser)
+        self._refresh_browser_list()
+        self.browser_list.selection_clear(0, "end")
+        self.browser_list.selection_set("end")
+        if browser.flavour == ACCESSIBILITY:
+            self._flash(f"Added {browser.name}. Reading its tabs needs Accessibility permission.")
+        else:
+            self._flash(f"Added {browser.name}.")
+
+    def remove_browser(self) -> None:
+        selection = self.browser_list.curselection()
+        if not selection:
+            return
+        removed = self.browsers.pop(selection[0])
+        self._refresh_browser_list()
+        self._flash(f"Removed {removed.name}.")
+
     def revert(self) -> None:
         self.config = Config.load(self.config.path)
         self._load_into_widgets()
@@ -403,7 +462,7 @@ class SettingsWindow:
         cfg.general.hotkeys.toggle_session = self.toggle_key_var.get().strip()
         cfg.general.hotkeys.answer_yes = self.yes_key_var.get().strip()
         cfg.general.hotkeys.answer_no = self.no_key_var.get().strip()
-        cfg.general.browsers = [name for name, var in self.browser_vars.items() if var.get()]
+        cfg.general.browsers = list(self.browsers)
 
     def _flash(self, message: str) -> None:
         self.status.config(text=message)

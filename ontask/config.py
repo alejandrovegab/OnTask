@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .browsers import Browser, coerce as coerce_browser, default_browsers
+
 CONFIG_VERSION = 1
 
 
@@ -34,6 +36,21 @@ def default_config_path() -> Path:
 def _get(d: dict[str, Any], key: str, default: Any) -> Any:
     value = d.get(key, default)
     return default if value is None else value
+
+
+def _read_browsers(value: Any) -> list[Browser]:
+    """Load the browser list, tolerating the old list-of-names format.
+
+    Older configs stored display names only. Those are mapped back to bundle ids
+    where the name is one OnTask used to ship, so an existing setup keeps the
+    browsers it had; anything unrecognisable is dropped rather than guessed at.
+    """
+    browsers = []
+    for entry in value or []:
+        browser = coerce_browser(entry)
+        if browser is not None:
+            browsers.append(browser)
+    return browsers
 
 
 @dataclass
@@ -167,9 +184,10 @@ class GeneralSettings:
     start_session_on_launch: bool = False
     play_sound: bool = True
     show_elapsed_in_menu_bar: bool = True
-    browsers: list[str] = field(
-        default_factory=lambda: ["Safari", "Google Chrome", "Arc", "Brave Browser", "Microsoft Edge"]
-    )
+    # Safari alone is configured out of the box. Everything else is added in
+    # Settings by picking its .app, which is what makes the bundle id and the
+    # URL-reading route right rather than guessed.
+    browsers: list[Browser] = field(default_factory=default_browsers)
     hotkeys: Hotkeys = field(default_factory=Hotkeys)
 
     PROMPT_UIS = ("window", "notification", "both")
@@ -188,7 +206,7 @@ class GeneralSettings:
             show_elapsed_in_menu_bar=bool(
                 _get(d, "show_elapsed_in_menu_bar", base.show_elapsed_in_menu_bar)
             ),
-            browsers=[str(x) for x in _get(d, "browsers", base.browsers)],
+            browsers=_read_browsers(_get(d, "browsers", base.browsers)),
             hotkeys=Hotkeys.from_dict(_get(d, "hotkeys", {})),
         )
 
@@ -199,7 +217,7 @@ class GeneralSettings:
             "start_session_on_launch": self.start_session_on_launch,
             "play_sound": self.play_sound,
             "show_elapsed_in_menu_bar": self.show_elapsed_in_menu_bar,
-            "browsers": self.browsers,
+            "browsers": [b.to_dict() for b in self.browsers],
             "hotkeys": self.hotkeys.to_dict(),
         }
 
@@ -207,6 +225,15 @@ class GeneralSettings:
         self.poll_seconds = min(30.0, max(0.5, float(self.poll_seconds)))
         if self.prompt_ui not in self.PROMPT_UIS:
             self.prompt_ui = "window"
+        # One entry per bundle id; adding the same app twice is a no-op.
+        seen: set[str] = set()
+        unique: list[Browser] = []
+        for browser in self.browsers:
+            key = browser.bundle_id or browser.name
+            if key and key not in seen:
+                seen.add(key)
+                unique.append(browser)
+        self.browsers = unique
 
 
 @dataclass

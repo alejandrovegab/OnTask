@@ -64,7 +64,7 @@ Check the current state any time from **Permissions...** in the menu.
 | Permission | Needed for | If refused |
 | --- | --- | --- |
 | **Automation** | Reading tabs in Safari and Chromium browsers. One prompt per browser. | That browser drops to app-level tracking. OnTask stops asking. |
-| **Accessibility** | Global hotkeys, and reading the Firefox address bar. | Hotkeys off, Firefox tracked app-level. Buttons still work. |
+| **Accessibility** | Global hotkeys, and reading the address bar in Gecko browsers (Firefox, Zen). | Hotkeys off, those browsers tracked app-level. Buttons still work. |
 | **Notifications** | Banner check-ins with Yes/No buttons. | Falls back to the floating window, and says so once. |
 
 Notification permission is only ever requested if you actually select a
@@ -110,19 +110,37 @@ e.g. `<ctrl>+<alt>+f`.
 
 ### Browsers
 
-Two different mechanisms, because Firefox does not support the first:
+**Safari is the only browser set up out of the box.** Add any other with
+**Settings → General → Add from Finder...** and pick its app in `/Applications`.
+
+Choosing the app rather than typing a name is the point: OnTask reads the
+`CFBundleIdentifier` and display name straight out of the bundle, then matches
+the frontmost app on that bundle id. Names are not reliable identity — Zen is
+called `Zen` but its process reports `zen` — so id matching is what makes
+tracking work for it. It also survives the app being renamed or moved.
+
+Picking the app also decides *how* the URL is read, from the bundle's own
+contents rather than a hardcoded list:
 
 - **Safari and the Chromium family** (Chrome, Arc, Brave, Edge, Vivaldi, Opera,
-  Dia) are read with AppleScript. Exact, cheap, and gives the real tab URL.
-- **Firefox and other Gecko browsers** (Firefox Developer Edition, Zen,
-  LibreWolf) expose no AppleScript URL, so OnTask walks the accessibility tree
-  to read the address bar. This is best effort: it depends on the browser's
-  internal view hierarchy and can break across releases. When it fails, that
-  browser falls back to app-level tracking rather than erroring.
+  Dia) are read with AppleScript, addressed by bundle id. Exact, cheap, and
+  gives the real tab URL.
+- **Firefox and other Gecko browsers** (Zen, LibreWolf, Floorp, Waterfox, Tor,
+  Mullvad) expose no AppleScript URL, so OnTask walks the accessibility tree to
+  read the address bar. Any Gecko fork is recognised by the `application.ini`
+  in its bundle, so a browser OnTask has never heard of still lands on the
+  right route. This is best effort: it depends on the browser's internal view
+  hierarchy and can break across releases. When it fails, that browser falls
+  back to app-level tracking rather than erroring.
+- **Anything else scriptable** is probed once on first use — both AppleScript
+  dialects are tried and whichever answers is remembered for the rest of the
+  run.
+- **An app with no way to read its tab** is still addable, after a warning; it
+  is tracked at app level only.
 
 Address bar text that is not a URL — a half-typed search, `about:blank` — is
-ignored rather than guessed at. Turn any browser off in Settings → General to
-skip URL tracking for it entirely.
+ignored rather than guessed at. Remove a browser from the list in
+Settings → General to stop URL tracking for it entirely.
 
 ### Rules
 
@@ -170,7 +188,7 @@ changes within one poll, no restart needed.
 | `no_response.max_alerts` | `3` | Alerts before it counts as a no. |
 | `poll_seconds` | `2.0` | How often the frontmost window is sampled. |
 | `prompt_ui` | `window` | Or `notification` (banner with Yes/No buttons), or `both` (banner, escalating to the window if ignored). |
-| `browsers` | Safari, Chrome, Arc, Brave, Edge, Firefox | Which browsers get URL tracking. |
+| `browsers` | Safari only | Browsers that get URL tracking. Each entry records `name`, `bundle_id`, `flavour` and `app_path`; add more from Finder in Settings. |
 | `start_session_on_launch` | `false` | Begin a session at startup. |
 | `play_sound` | `true` | Sound with each check-in. |
 | `show_elapsed_in_menu_bar` | `true` | Show the timer in the menu bar. |
@@ -184,7 +202,7 @@ to `config.json.bad` so the app still starts.
 | --- | --- | --- | --- |
 | Shell | Menu bar | Control window | Control window |
 | App tracking | NSWorkspace | Win32 API | `xdotool` |
-| Tab URLs | Safari, Chromium browsers, Firefox | not available | not available |
+| Tab URLs | Safari, Chromium browsers, Gecko browsers | not available | not available |
 | Check-in | Floating panel or notification | Window | Window |
 
 Where focus detection is unavailable, OnTask treats the target as on-task and
@@ -193,7 +211,7 @@ falls back to plain ladder reminders rather than nagging.
 ## Development
 
 ```sh
-./.venv/bin/python -m unittest discover -s tests   # 82 tests, fake clock, instant
+./.venv/bin/python -m unittest discover -s tests   # 95 tests, fake clock, instant
 ./.venv/bin/python -m ontask --headless            # watch focus detection live
 ./.venv/bin/python -m ontask --settings            # settings window on its own
 ```
@@ -208,7 +226,7 @@ ontask/
   engine.py      the state machine (no UI, no OS calls, fake-clock testable)
   app.py         controller wiring engine to a UI shell
   hotkeys.py     pynput hotkeys, marshalled onto the UI thread
-  browsers.py    browser catalogue
+  browsers.py    browser identity: bundle inspection and URL-route detection
   focus/         macos.py (NSWorkspace + AppleScript), ax.py (accessibility
                  address bar), fallback.py (Win32/xdotool)
   ui/            menubar_macos.py, prompt_macos.py, notify_macos.py,

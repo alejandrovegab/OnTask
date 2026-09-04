@@ -14,11 +14,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ontask.browsers import (
     ACCESSIBILITY,
-    BROWSERS,
+    APPLESCRIPT,
     CHROMIUM,
     SAFARI,
     UNSUPPORTED,
-    flavour_of,
+    Browser,
+    BrowserError,
+    app_bundle_root,
+    coerce,
+    default_browsers,
+    inspect_app,
     needs_accessibility,
     needs_automation,
 )
@@ -39,25 +44,120 @@ except Exception:
     HAVE_RUMPS = False
 
 
-class BrowserCatalogueTest(unittest.TestCase):
-    def test_every_entry_has_a_known_flavour(self):
-        for name, (bundle, flavour) in BROWSERS.items():
-            self.assertTrue(bundle, name)
-            self.assertIn(flavour, (SAFARI, CHROMIUM, ACCESSIBILITY, UNSUPPORTED), name)
+def _fake_app(root, name, bundle_id, *, plist_extra=None, resources=()):
+    """Build a minimal .app on disk so bundle inspection can be tested."""
+    import plistlib
 
-    def test_gecko_browsers_use_the_accessibility_route(self):
-        for name in ("Firefox", "Zen", "LibreWolf"):
-            self.assertEqual(flavour_of(name), ACCESSIBILITY, name)
-            self.assertTrue(needs_accessibility(name), name)
-            self.assertFalse(needs_automation(name), name)
+    app = Path(root) / f"{name}.app"
+    (app / "Contents" / "Resources").mkdir(parents=True)
+    info = {"CFBundleIdentifier": bundle_id, "CFBundleName": name}
+    info.update(plist_extra or {})
+    with (app / "Contents" / "Info.plist").open("wb") as handle:
+        plistlib.dump(info, handle)
+    for filename in resources:
+        (app / "Contents" / "Resources" / filename).write_text("")
+    return app
 
-    def test_applescript_browsers_need_automation(self):
-        for name in ("Safari", "Google Chrome", "Arc"):
-            self.assertTrue(needs_automation(name), name)
-            self.assertFalse(needs_accessibility(name), name)
 
-    def test_unknown_browser_is_unsupported(self):
-        self.assertEqual(flavour_of("Netscape Navigator"), UNSUPPORTED)
+class BrowserDefaultsTest(unittest.TestCase):
+    def test_safari_is_the_only_browser_out_of_the_box(self):
+        browsers = default_browsers()
+        self.assertEqual([b.name for b in browsers], ["Safari"])
+        self.assertEqual(browsers[0].bundle_id, "com.apple.Safari")
+        self.assertEqual(browsers[0].flavour, SAFARI)
+
+    def test_browsers_are_matched_on_bundle_id_not_name(self):
+        # Zen's process reports "zen" while the app is called "Zen".
+        zen = Browser("Zen", "app.zen-browser.zen", ACCESSIBILITY)
+        self.assertTrue(zen.matches("zen", "app.zen-browser.zen"))
+        self.assertFalse(zen.matches("Zen", "org.mozilla.firefox"))
+
+    def test_name_is_only_used_when_there_is_no_bundle_id(self):
+        browser = Browser("Odd", "com.example.odd", CHROMIUM)
+        self.assertTrue(Browser("Odd", "", CHROMIUM).matches("Odd", ""))
+        self.assertFalse(browser.matches("Odd", ""))
+
+    def test_permission_kind_follows_the_flavour(self):
+        self.assertTrue(needs_accessibility(Browser("Zen", "z", ACCESSIBILITY)))
+        self.assertFalse(needs_automation(Browser("Zen", "z", ACCESSIBILITY)))
+        for flavour in (SAFARI, CHROMIUM, APPLESCRIPT):
+            browser = Browser("B", "b", flavour)
+            self.assertTrue(needs_automation(browser), flavour)
+            self.assertFalse(needs_accessibility(browser), flavour)
+
+    def test_legacy_name_entries_migrate_to_bundle_ids(self):
+        self.assertEqual(coerce("Zen").bundle_id, "app.zen-browser.zen")
+        self.assertEqual(coerce("Zen").flavour, ACCESSIBILITY)
+        self.assertEqual(coerce("Google Chrome").flavour, CHROMIUM)
+        self.assertIsNone(coerce("Netscape Navigator"))
+
+    def test_a_path_inside_a_bundle_resolves_to_the_bundle(self):
+        self.assertEqual(
+            app_bundle_root("/Applications/Zen.app/Contents/MacOS/zen"),
+            Path("/Applications/Zen.app"),
+        )
+        self.assertIsNone(app_bundle_root("/Applications/notes.txt"))
+
+
+class BundleInspectionTest(unittest.TestCase):
+    """Classification reads the bundle rather than trusting a typed-in name."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = self._tmp.name
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_gecko_forks_are_detected_by_their_bundle_contents(self):
+        # An unlisted Firefox fork still lands on the accessibility route,
+        # despite Gecko setting NSAppleScriptEnabled without a URL to read.
+        app = _fake_app(
+            self.root,
+            "Rocket",
+            "com.example.rocket",
+            plist_extra={"NSAppleScriptEnabled": True},
+            resources=("application.ini", "omni.ja"),
+        )
+        self.assertEqual(inspect_app(app).flavour, ACCESSIBILITY)
+
+    def test_scriptable_browser_of_unknown_dialect_is_probed_later(self):
+        app = _fake_app(
+            self.root, "Comet", "com.example.comet", resources=("scripting.sdef",)
+        )
+        self.assertEqual(inspect_app(app).flavour, APPLESCRIPT)
+
+    def test_known_bundle_ids_skip_detection(self):
+        app = _fake_app(self.root, "Zen", "app.zen-browser.zen")
+        self.assertEqual(inspect_app(app).flavour, ACCESSIBILITY)
+
+    def test_a_non_scriptable_app_is_app_level_only(self):
+        app = _fake_app(self.root, "Plain", "com.example.plain")
+        self.assertEqual(inspect_app(app).flavour, UNSUPPORTED)
+
+    def test_name_and_id_come_from_the_bundle(self):
+        app = _fake_app(
+            self.root,
+            "Zen",
+            "app.zen-browser.zen",
+            plist_extra={"CFBundleDisplayName": "Zen Browser"},
+        )
+        browser = inspect_app(app)
+        self.assertEqual(browser.name, "Zen Browser")
+        self.assertEqual(browser.bundle_id, "app.zen-browser.zen")
+        self.assertEqual(browser.app_path, str(app))
+
+    def test_a_bundle_without_an_identifier_is_refused(self):
+        app = _fake_app(self.root, "Nameless", "")
+        with self.assertRaises(BrowserError):
+            inspect_app(app)
+
+    def test_a_plain_file_is_refused(self):
+        plain = Path(self.root) / "notes.txt"
+        plain.write_text("")
+        with self.assertRaises(BrowserError):
+            inspect_app(plain)
+
+
+ZEN = Browser("Zen", "app.zen-browser.zen", ACCESSIBILITY)
 
 
 class FocusTargetTest(unittest.TestCase):
@@ -87,6 +187,7 @@ class MacFocusProviderTest(unittest.TestCase):
         provider.needs_accessibility = set()
         provider.last_error = ""
         provider._cache = None
+        provider._dialects = {}
         provider._workspace = mock.Mock()
         app = mock.Mock()
         app.localizedName.return_value = app_name
@@ -100,7 +201,7 @@ class MacFocusProviderTest(unittest.TestCase):
     def test_non_browser_skips_applescript(self):
         provider = self._provider("Xcode", "com.apple.dt.Xcode")
         with mock.patch("subprocess.run", self._run):
-            target = provider.current(["Safari"])
+            target = provider.current(default_browsers())
         self._run.assert_not_called()
         self.assertEqual(target.app_name, "Xcode")
         self.assertEqual(target.url, "")
@@ -108,53 +209,80 @@ class MacFocusProviderTest(unittest.TestCase):
     def test_browser_returns_url_and_title(self):
         provider = self._provider("Safari", "com.apple.Safari", ("https://github.com/x\nGitHub\n", 0, ""))
         with mock.patch("subprocess.run", self._run):
-            target = provider.current(["Safari"])
+            target = provider.current(default_browsers())
         self.assertEqual(target.url, "https://github.com/x")
         self.assertEqual(target.title, "GitHub")
         self.assertEqual(target.host, "github.com")
 
-    def test_disabled_browser_is_not_queried(self):
+    def test_a_browser_that_was_never_added_is_not_queried(self):
         provider = self._provider("Arc", "company.thebrowser.Browser")
         with mock.patch("subprocess.run", self._run):
-            target = provider.current(["Safari"])  # Arc switched off in settings
+            target = provider.current(default_browsers())  # only Safari configured
         self._run.assert_not_called()
         self.assertEqual(target.url, "")
 
     def test_denied_automation_stops_repeat_prompts(self):
         provider = self._provider("Safari", "com.apple.Safari", ("", 1, "execution error: -1743"))
         with mock.patch("subprocess.run", self._run):
-            provider.current(["Safari"])
-            provider.current(["Safari"])
+            provider.current(default_browsers())
+            provider.current(default_browsers())
         self.assertEqual(self._run.call_count, 1)
         self.assertIn("Safari", provider.blocked_browsers)
         self.assertIn("System Settings", provider.permission_hint())
 
-    def test_firefox_reads_the_address_bar_instead_of_applescript(self):
-        provider = self._provider("Firefox", "org.mozilla.firefox")
+    def test_gecko_reads_the_address_bar_instead_of_applescript(self):
+        provider = self._provider("zen", "app.zen-browser.zen")
         with mock.patch("subprocess.run", self._run), \
              mock.patch("ontask.focus.ax.accessibility_trusted", return_value=True), \
              mock.patch("ontask.focus.ax.address_bar", return_value=("https://github.com/x", "GitHub")):
-            target = provider.current(["Firefox"])
+            target = provider.current([ZEN])
         self._run.assert_not_called()  # never shells out to osascript
         self.assertEqual(target.host, "github.com")
         self.assertEqual(target.title, "GitHub")
 
-    def test_firefox_without_accessibility_degrades_to_app_only(self):
-        provider = self._provider("Firefox", "org.mozilla.firefox")
+    def test_gecko_without_accessibility_degrades_to_app_only(self):
+        provider = self._provider("zen", "app.zen-browser.zen")
         with mock.patch("ontask.focus.ax.accessibility_trusted", return_value=False):
-            target = provider.current(["Firefox"])
-        self.assertEqual(target.app_name, "Firefox")
+            target = provider.current([ZEN])
+        self.assertEqual(target.app_name, "zen")
         self.assertEqual(target.url, "")
-        self.assertIn("Firefox", provider.needs_accessibility)
+        self.assertIn("Zen", provider.needs_accessibility)
         self.assertIn("Accessibility", provider.permission_hint())
 
     def test_accessibility_errors_do_not_propagate(self):
-        provider = self._provider("Firefox", "org.mozilla.firefox")
+        provider = self._provider("zen", "app.zen-browser.zen")
         with mock.patch("ontask.focus.ax.accessibility_trusted", return_value=True), \
              mock.patch("ontask.focus.ax.address_bar", side_effect=RuntimeError("tree changed")):
-            target = provider.current(["Firefox"])
+            target = provider.current([ZEN])
         self.assertEqual(target.url, "")
         self.assertIn("tree changed", provider.last_error)
+
+    def test_applescript_is_addressed_by_bundle_id(self):
+        provider = self._provider("Safari", "com.apple.Safari", ("https://a.com\nA\n", 0, ""))
+        with mock.patch("subprocess.run", self._run):
+            provider.current(default_browsers())
+        script = self._run.call_args[0][0][-1]
+        self.assertIn('application id "com.apple.Safari"', script)
+
+    def test_unknown_dialect_is_probed_and_then_remembered(self):
+        provider = self._provider("Comet", "com.example.comet")
+        comet = Browser("Comet", "com.example.comet", APPLESCRIPT)
+        # Chromium is tried first and errors; the Safari form then answers.
+        results = [
+            mock.Mock(returncode=1, stdout="", stderr="execution error: can't get active tab"),
+            mock.Mock(returncode=0, stdout="https://a.com\nA\n", stderr=""),
+            mock.Mock(returncode=0, stdout="https://b.com\nB\n", stderr=""),
+        ]
+        run = mock.Mock(side_effect=results)
+        with mock.patch("subprocess.run", run):
+            first = provider.current([comet])
+            provider._cache = None  # a later poll, past the cache window
+            second = provider.current([comet])
+        self.assertEqual(first.host, "a.com")
+        self.assertEqual(second.host, "b.com")
+        self.assertEqual(provider._dialects["com.example.comet"], SAFARI)
+        # Two probes, then the remembered dialect only.
+        self.assertEqual(run.call_count, 3)
 
     def test_hint_covers_both_permission_kinds(self):
         provider = self._provider("Safari", "com.apple.Safari")
@@ -167,8 +295,8 @@ class MacFocusProviderTest(unittest.TestCase):
     def test_result_is_cached_between_rapid_polls(self):
         provider = self._provider("Safari", "com.apple.Safari", ("https://a.com\nA\n", 0, ""))
         with mock.patch("subprocess.run", self._run):
-            provider.current(["Safari"])
-            provider.current(["Safari"])
+            provider.current(default_browsers())
+            provider.current(default_browsers())
         self.assertEqual(self._run.call_count, 1)
 
 
