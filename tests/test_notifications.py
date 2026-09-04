@@ -154,6 +154,9 @@ class PromptRoutingTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         path = Path(self.tmp.name) / "config.json"
         cfg = Config()
+        # Without this the shell would offer the first-run browser picker and
+        # spawn a real window for every test in this class.
+        cfg.setup_complete = True
         cfg.general.hotkeys.toggle_session = ""
         cfg.general.hotkeys.answer_yes = ""
         cfg.general.hotkeys.answer_no = ""

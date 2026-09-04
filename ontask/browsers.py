@@ -215,6 +215,22 @@ def _is_gecko(app: Path) -> bool:
     return (resources / "application.ini").is_file() or (resources / "omni.ja").is_file()
 
 
+def _is_chromium(app: Path) -> bool:
+    """Whether a bundle is a Chromium fork, by its embedded framework.
+
+    Every Chromium build ships a `<Name> Framework.framework`, which is enough
+    to route an unlisted fork straight to the Chromium dialect instead of
+    making it earn that through a runtime probe.
+    """
+    frameworks = app / "Contents" / "Frameworks"
+    try:
+        return any(
+            child.name.endswith(" Framework.framework") for child in frameworks.iterdir()
+        )
+    except OSError:
+        return False
+
+
 def _speaks_applescript(app: Path, info: dict[str, Any]) -> bool:
     if info.get("NSAppleScriptEnabled") in (True, "YES", "Yes", "yes", "true", "True"):
         return True
@@ -237,6 +253,8 @@ def detect_flavour(app: Path, info: dict[str, Any], bundle_id: str) -> str:
     # family on a route that can never answer.
     if _is_gecko(app):
         return ACCESSIBILITY
+    if _is_chromium(app):
+        return CHROMIUM
     if _speaks_applescript(app, info):
         return APPLESCRIPT
     return UNSUPPORTED
@@ -283,6 +301,64 @@ def coerce(entry: Any) -> Browser | None:
             return None
         return Browser(name=name, bundle_id=bundle_id, flavour=KNOWN_FLAVOURS.get(bundle_id, UNSUPPORTED))
     return None
+
+
+def _declares_html(info: dict[str, Any]) -> bool:
+    """Whether a bundle claims it can open HTML documents.
+
+    This is what separates a browser from the other apps macOS is willing to
+    hand an http:// URL to - password managers, launchers, single-site
+    wrappers. They register the scheme; only a browser also declares HTML.
+    """
+    for entry in info.get("CFBundleDocumentTypes") or []:
+        if not isinstance(entry, dict):
+            continue
+        names = list(entry.get("LSItemContentTypes") or [])
+        names.append(entry.get("CFBundleTypeName") or "")
+        if any("html" in str(name).lower() for name in names):
+            return True
+    return False
+
+
+def installed_browsers() -> list[Browser]:
+    """Every browser macOS knows about, for the picker. [] if unavailable.
+
+    Asking LaunchServices which apps can open an https:// URL is how the list
+    stays honest: it finds browsers wherever they are installed, including ones
+    OnTask has never heard of, without scanning the disk.
+    """
+    try:
+        from AppKit import NSWorkspace
+        from Foundation import NSURL
+    except Exception:
+        return []
+    try:
+        workspace = NSWorkspace.sharedWorkspace()
+        urls = workspace.URLsForApplicationsToOpenURL_(
+            NSURL.URLWithString_("https://example.com")
+        )
+    except Exception:
+        return []
+    found: dict[str, Browser] = {}
+    for url in urls or []:
+        try:
+            path = Path(str(url.path()))
+        except Exception:
+            continue
+        try:
+            info = _read_info_plist(path)
+        except BrowserError:
+            continue
+        if not _declares_html(info):
+            continue
+        try:
+            browser = inspect_app(path)
+        except BrowserError:
+            continue
+        # The same browser can be registered from several copies on disk; the
+        # bundle id is the identity, so the first one found wins.
+        found.setdefault(browser.bundle_id, browser)
+    return sorted(found.values(), key=lambda b: b.name.lower())
 
 
 def needs_automation(browser: Browser) -> bool:

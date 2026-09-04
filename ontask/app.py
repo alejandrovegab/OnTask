@@ -10,13 +10,16 @@ from __future__ import annotations
 import queue
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from . import engine as eng
+from . import ipc
 from .config import Config, Profile
 from .engine import Engine, format_duration
 from .focus import UNKNOWN, FocusTarget, get_provider
 from .matching import classify, suggest_rule
+from .stats import Stats, default_stats_path
 
 
 class Shell:
@@ -27,6 +30,13 @@ class Shell:
     def realert(self, prompt: eng.ActivePrompt) -> None: ...
 
     def close_prompt(self) -> None: ...
+
+    def answer_feedback(self, yes: bool) -> None:
+        """Acknowledge an answer before the prompt is torn down.
+
+        Called for every route into an answer - button, hotkey, notification -
+        so the UI can confirm which option was taken.
+        """
 
     def notify(self, title: str, message: str) -> None: ...
 
@@ -42,8 +52,17 @@ class Controller:
         self.focus = get_provider()
         self.shell = shell or Shell()
         self.target: FocusTarget = UNKNOWN
+        self.stats = Stats.load(default_stats_path(self.config.path))
         self._actions: queue.Queue[tuple] = queue.Queue()
         self._config_mtime = self._mtime()
+        # Set by the shell so a hotkey can be acted on at once instead of
+        # waiting for the next poll; see `post`.
+        self._wake_hook = None
+        self._runtime_dir = ipc.runtime_dir(self.config.path)
+        self._open_settings_signal = ipc.Signal(self._runtime_dir, ipc.OPEN_SETTINGS)
+        self._settings_proc = None
+        self._stats_proc = None
+        self._setup_proc = None
         if self.config.general.start_session_on_launch:
             self.engine.start()
 
@@ -52,9 +71,27 @@ class Controller:
 
     # -- thread-safe action queue ----------------------------------------
 
+    def set_wake_hook(self, hook) -> None:
+        """Register the shell's "run the queue now" callback.
+
+        Without it a hotkey waits for the next poll, which is why answering used
+        to take a visible moment to dismiss the check-in.
+        """
+        self._wake_hook = hook
+
     def post(self, action: str, *args) -> None:
         """Queue an action from a non-UI thread (global hotkeys land here)."""
         self._actions.put((action, args))
+        hook = self._wake_hook
+        if hook is not None:
+            try:
+                hook()
+            except Exception:
+                pass
+
+    def wake(self) -> None:
+        """Run whatever is queued right now. Called on the UI thread."""
+        self._drain()
 
     def _drain(self) -> None:
         while True:
@@ -71,11 +108,16 @@ class Controller:
     def poll(self) -> None:
         self._drain()
         self.reload_if_changed()
+        if self._open_settings_signal.received():
+            # A second launch (Spotlight, Dock, another terminal) asking the
+            # instance that is already running to show itself.
+            self.open_settings()
         try:
             self.target = self.focus.current(self.config.general.browsers)
         except Exception:
             self.target = UNKNOWN
         self._handle(self.engine.tick(target=self.target))
+        self.stats.maybe_save()
 
     def _handle(self, events) -> None:
         for event in events:
@@ -88,8 +130,22 @@ class Controller:
             elif isinstance(event, eng.SuggestApprove):
                 self.shell.ask_add_rule(event.target, event.rule, self)
             elif isinstance(event, eng.Answered):
+                self.stats.record_answer(
+                    event.kind, event.yes, event.ignored, event.target_key,
+                    event.target_label, self.config.active_profile,
+                )
                 self._announce(event)
+            elif isinstance(event, eng.OffTaskLogged):
+                self.stats.record_off_task(
+                    event.key, event.label, event.seconds, event.blocked,
+                    self.config.active_profile,
+                )
+            elif isinstance(event, eng.Recovered):
+                self.stats.record_recovered(event.key, event.label, self.config.active_profile)
             elif isinstance(event, eng.SessionChanged):
+                if event.phase == eng.IDLE:
+                    self.stats.record_session(event.elapsed_seconds, event.profile)
+                    self.stats.maybe_save(force=True)
                 self.shell.refresh()
         if events:
             self.shell.refresh()
@@ -100,6 +156,10 @@ class Controller:
         elif event.advanced:
             minutes = _fmt(event.interval_minutes)
             self.shell.notify("OnTask", f"Nice. Next check-in in {minutes} minutes.")
+        elif event.penalty_seconds > 0:
+            self.shell.notify(
+                "OnTask", f"{format_duration(event.penalty_seconds)} taken off the session clock."
+            )
 
     # -- session control --------------------------------------------------
 
@@ -119,6 +179,10 @@ class Controller:
             self._handle(self.engine.resume())
 
     def answer(self, yes: bool) -> None:
+        # Told before the engine runs, because answering emits ClosePrompt and
+        # the shell needs to know which option to acknowledge first.
+        if self.engine.active_prompt is not None:
+            self.shell.answer_feedback(yes)
         self._handle(self.engine.answer(yes))
 
     def answer_yes(self) -> None:
@@ -163,12 +227,43 @@ class Controller:
     # -- settings ---------------------------------------------------------
 
     def open_settings(self) -> None:
+        self._open_window("ontask.ui.settings_app", "_settings_proc", ipc.RAISE_SETTINGS)
+
+    def open_first_run(self) -> None:
+        """Offer the browser picker once, on the first launch."""
+        self._open_window("ontask.ui.browser_setup", "_setup_proc", ipc.RAISE_SETTINGS)
+
+    def open_stats(self) -> None:
+        self.stats.maybe_save(force=True)
+        self._open_window("ontask.ui.stats_app", "_stats_proc", ipc.RAISE_STATS)
+
+    def _open_window(self, module: str, attribute: str, raise_marker: str) -> None:
+        """Show a helper window, reusing the one already open.
+
+        Spawning a second copy would strand the user's unsaved edits in a window
+        hidden behind the new one, so a live process is nudged to the front
+        instead.
+        """
+        existing = getattr(self, attribute, None)
+        if existing is not None and existing.poll() is None:
+            ipc.Signal(self._runtime_dir, raise_marker).send()
+            return
         path = str(self.config.path or "")
         # A separate process keeps Tk off the menu bar app's run loop.
-        subprocess.Popen(
-            [sys.executable, "-m", "ontask.ui.settings_app", path],
-            cwd=str(Path(__file__).resolve().parents[1]),
-        )
+        try:
+            proc = subprocess.Popen(
+                [sys.executable, "-m", module, path],
+                cwd=str(Path(__file__).resolve().parents[1]),
+            )
+        except OSError:
+            return
+        setattr(self, attribute, proc)
+
+    def shutdown(self) -> None:
+        """Bank the running session before the app goes away."""
+        if self.engine.phase != eng.IDLE:
+            self._handle(self.engine.stop())
+        self.stats.maybe_save(force=True)
 
     def _mtime(self) -> float:
         try:
@@ -187,8 +282,12 @@ class Controller:
 
     # -- display ----------------------------------------------------------
 
+    def snapshot(self) -> eng.Snapshot:
+        """Engine state with the clock brought up to the current instant."""
+        return self.engine.snapshot(time.monotonic())
+
     def status_title(self) -> str:
-        snap = self.engine.snapshot()
+        snap = self.snapshot()
         if snap.phase == eng.RUNNING:
             return format_duration(snap.elapsed_seconds)
         if snap.phase == eng.PAUSED:
@@ -196,7 +295,7 @@ class Controller:
         return ""
 
     def status_lines(self) -> list[str]:
-        snap = self.engine.snapshot()
+        snap = self.snapshot()
         if snap.phase == eng.IDLE:
             return ["No session running", f"Profile: {snap.profile}"]
         lines = [

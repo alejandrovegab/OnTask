@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ontask.browsers import ACCESSIBILITY
+from ontask.browsers import ACCESSIBILITY, APPLESCRIPT, Browser
 from ontask.config import Config
 
 try:
@@ -21,11 +21,27 @@ except Exception:
     HAVE_TK = False
 
 
+# The picker lists whatever browsers are installed; pinning that keeps the
+# suite from depending on what happens to be on the machine running it.
+INSTALLED = [
+    Browser("Safari", "com.apple.Safari", "safari", ""),
+    Browser("Zen", "app.zen-browser.zen", ACCESSIBILITY, ""),
+    Browser("Google Chrome", "com.google.Chrome", "chromium", ""),
+]
+
+
 @unittest.skipUnless(HAVE_TK, "no Tk display")
 class SettingsWindowTest(unittest.TestCase):
     def setUp(self):
+        from unittest import mock
+
         from ontask.ui.settings_app import SettingsWindow
 
+        patcher = mock.patch(
+            "ontask.ui.browser_setup.installed_browsers", return_value=list(INSTALLED)
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.path = Path(self.tmp.name) / "config.json"
         Config().save(self.path)
@@ -111,41 +127,70 @@ class SettingsWindowTest(unittest.TestCase):
             self.window.remove_profile()
         self.assertNotIn("New Profile", self.window.config.profile_names())
 
-    def test_only_safari_is_listed_before_anything_is_added(self):
-        self.assertEqual([b.name for b in self.window.browsers], ["Safari"])
-        self.assertIn("com.apple.Safari", self.window.browser_list.get(0))
+    def test_only_safari_is_ticked_before_anything_is_chosen(self):
+        ticked = [b.name for b in self.window.browser_list.selected()]
+        self.assertEqual(ticked, ["Safari"])
 
-    def test_adding_a_browser_from_finder_keeps_the_bundle_identity(self):
+    def test_untracked_browsers_are_still_offered(self):
+        # Everything installed is listed; only what is ticked gets tracked.
+        listed = {b.name for b, _ in self.window.browser_list._rows}
+        self.assertIn("Safari", listed)
+
+    def test_ticking_a_browser_persists_its_bundle_identity(self):
+        for browser, var in self.window.browser_list._rows:
+            var.set(browser.bundle_id in ("com.apple.Safari", "app.zen-browser.zen"))
+        self.window.save()
+
+        browsers = Config.load(self.path).general.browsers
+        by_id = {b.bundle_id: b for b in browsers}
+        self.assertEqual(set(by_id), {"com.apple.Safari", "app.zen-browser.zen"})
+        self.assertEqual(by_id["app.zen-browser.zen"].flavour, ACCESSIBILITY)
+
+    def test_unticking_everything_turns_url_tracking_off(self):
+        for _, var in self.window.browser_list._rows:
+            var.set(False)
+        self.window.save()
+        self.assertEqual(Config.load(self.path).general.browsers, [])
+
+    def test_adding_a_browser_from_finder_reads_the_bundle(self):
         import plistlib
         import tempfile
         from pathlib import Path as _Path
         from unittest import mock
 
         with tempfile.TemporaryDirectory() as tmp:
-            app = _Path(tmp) / "Zen.app"
+            app = _Path(tmp) / "Comet.app"
             (app / "Contents" / "Resources").mkdir(parents=True)
+            (app / "Contents" / "Resources" / "scripting.sdef").write_text("")
             with (app / "Contents" / "Info.plist").open("wb") as handle:
                 plistlib.dump(
-                    {"CFBundleIdentifier": "app.zen-browser.zen", "CFBundleName": "Zen"}, handle
+                    {"CFBundleIdentifier": "com.example.comet", "CFBundleName": "Comet"}, handle
                 )
-            with mock.patch("tkinter.filedialog.askopenfilename", return_value=str(app)), \
-                 mock.patch("tkinter.messagebox.showinfo") as told:
-                self.window.add_browser()
-                self.window.add_browser()  # adding twice is a no-op
-            told.assert_called_once()
+            with mock.patch("tkinter.filedialog.askopenfilename", return_value=str(app)):
+                self.window.browser_list.add_from_finder()
             self.window.save()
 
         browsers = Config.load(self.path).general.browsers
-        self.assertEqual([b.name for b in browsers], ["Safari", "Zen"])
-        zen = browsers[1]
-        self.assertEqual(zen.bundle_id, "app.zen-browser.zen")
-        self.assertEqual(zen.flavour, ACCESSIBILITY)
+        comet = [b for b in browsers if b.bundle_id == "com.example.comet"]
+        self.assertEqual(len(comet), 1)
+        self.assertEqual(comet[0].name, "Comet")
+        self.assertEqual(comet[0].flavour, APPLESCRIPT)
 
-    def test_removing_a_browser_persists(self):
-        self.window.browser_list.selection_set(0)
-        self.window.remove_browser()
+    def test_clock_penalty_round_trips(self):
+        self.window.penalty_on_var.set(True)
+        self.window.penalty_match_var.set(False)
+        self.window.penalty_fixed_var.set("45")
         self.window.save()
-        self.assertEqual(Config.load(self.path).general.browsers, [])
+
+        penalty = Config.load(self.path).reminder.clock_penalty
+        self.assertTrue(penalty.enabled)
+        self.assertFalse(penalty.match_situation)
+        self.assertEqual(penalty.fixed_seconds, 45.0)
+
+    def test_prompt_position_round_trips(self):
+        self.window.position_var.set("Bottom right")
+        self.window.save()
+        self.assertEqual(Config.load(self.path).general.prompt_position, "bottom_right")
 
 
 if __name__ == "__main__":

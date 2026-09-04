@@ -12,19 +12,15 @@ from __future__ import annotations
 import sys
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import messagebox, ttk
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ontask.config import Config, NoResponse, Profile  # noqa: E402
-from ontask.browsers import (  # noqa: E402
-    ACCESSIBILITY,
-    UNSUPPORTED,
-    Browser,
-    BrowserError,
-    inspect_app,
-)
+from ontask.config import ClockPenalty, Config, NoResponse, Profile  # noqa: E402
 from ontask.ladder import Ladder  # noqa: E402
+from ontask.ui.browser_setup import BrowserList  # noqa: E402
+from ontask.ui.tk_window import bring_to_front, watch_raise  # noqa: E402
+from ontask import ipc  # noqa: E402
 
 RULE_HELP = (
     "One rule per line.   app:Slack   site:github.com   site:*.google.com   "
@@ -40,7 +36,7 @@ class SettingsWindow:
         self.config = Config.load(path)
         self.current_profile: str | None = None
         self.root.title("OnTask Settings")
-        self.root.minsize(720, 560)
+        self.root.minsize(780, 660)
         self._build()
         self._load_into_widgets()
 
@@ -122,6 +118,40 @@ class SettingsWindow:
         self._row(timing_box, 1, "Remind after this long on a blocked app (seconds)", self.blocked_var)
         self._row(timing_box, 2, "Offer to approve after this many yes answers (0 disables)", self.suggest_var)
 
+        penalty_box = ttk.LabelFrame(tab, text="When you answer No", padding=10)
+        penalty_box.pack(fill="x", pady=(12, 0))
+        self.penalty_on_var = tk.BooleanVar()
+        self.penalty_match_var = tk.BooleanVar()
+        self.penalty_approved_var = tk.StringVar()
+        self.penalty_fixed_var = tk.StringVar()
+        ttk.Checkbutton(
+            penalty_box,
+            text="Take time off the session clock",
+            variable=self.penalty_on_var,
+            command=self._sync_penalty_fields,
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 2))
+        self.penalty_match_check = ttk.Checkbutton(
+            penalty_box,
+            text="Take off as much time as the stretch you were in",
+            variable=self.penalty_match_var,
+            command=self._sync_penalty_fields,
+        )
+        self.penalty_match_check.grid(row=1, column=0, columnspan=2, sticky="w", padx=(18, 0))
+        self.penalty_explain = ttk.Label(
+            penalty_box,
+            text="On a blocked app or site, takes off the blocked wait above.\n"
+            "On something not on the approved list, takes off the off-task wait above.",
+            foreground="#666",
+            justify="left",
+        )
+        self.penalty_explain.grid(row=2, column=0, columnspan=2, sticky="w", padx=(36, 0), pady=(2, 4))
+        self.penalty_approved_label, self.penalty_approved_entry = self._row(
+            penalty_box, 3, "On an approved app or site, take off (seconds)", self.penalty_approved_var
+        )
+        self.penalty_fixed_label, self.penalty_fixed_entry = self._row(
+            penalty_box, 4, "Take off the same amount every time (seconds)", self.penalty_fixed_var
+        )
+
         ignore_box = ttk.LabelFrame(tab, text="If a check-in is ignored", padding=10)
         ignore_box.pack(fill="x", pady=(12, 0))
         self.policy_var = tk.StringVar()
@@ -163,19 +193,32 @@ class SettingsWindow:
             "unanswerable.",
             foreground="#666",
             justify="left",
-        ).grid(row=5, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        ).grid(row=8, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.start_var = tk.BooleanVar()
         self.sound_var = tk.BooleanVar()
         self.menubar_var = tk.BooleanVar()
         ttk.Checkbutton(box, text="Start a session as soon as OnTask launches", variable=self.start_var).grid(
             row=2, column=0, columnspan=2, sticky="w", pady=2
         )
-        ttk.Checkbutton(box, text="Play a sound with each check-in", variable=self.sound_var).grid(
+        ttk.Checkbutton(box, text="Play a sound when a check-in appears", variable=self.sound_var).grid(
             row=3, column=0, columnspan=2, sticky="w", pady=2
         )
+        self.answer_sound_var = tk.BooleanVar()
+        ttk.Checkbutton(
+            box, text="Play a sound when you answer", variable=self.answer_sound_var
+        ).grid(row=4, column=0, columnspan=2, sticky="w", pady=2)
         ttk.Checkbutton(box, text="Show elapsed time in the menu bar", variable=self.menubar_var).grid(
-            row=4, column=0, columnspan=2, sticky="w", pady=2
+            row=6, column=0, columnspan=2, sticky="w", pady=2
         )
+        self.position_var = tk.StringVar()
+        ttk.Label(box, text="Check-in window position").grid(row=7, column=0, sticky="w", pady=3)
+        ttk.Combobox(
+            box,
+            textvariable=self.position_var,
+            state="readonly",
+            width=34,
+            values=list(_POSITION_TO_LABEL.values()),
+        ).grid(row=7, column=1, sticky="w", padx=(10, 0))
 
         keys_box = ttk.LabelFrame(tab, text="Global hotkeys", padding=10)
         keys_box.pack(fill="x", pady=(12, 0))
@@ -194,30 +237,36 @@ class SettingsWindow:
 
         browser_box = ttk.LabelFrame(tab, text="Track tab URLs in these browsers", padding=10)
         browser_box.pack(fill="both", expand=True, pady=(12, 0))
-        self.browsers: list[Browser] = []
-        listing = ttk.Frame(browser_box)
-        listing.pack(fill="both", expand=True)
-        self.browser_list = tk.Listbox(listing, height=5, exportselection=False)
-        self.browser_list.pack(side="left", fill="both", expand=True)
-        buttons = ttk.Frame(listing)
-        buttons.pack(side="left", fill="y", padx=(8, 0))
-        ttk.Button(buttons, text="Add from Finder...", command=self.add_browser).pack(fill="x", pady=1)
-        ttk.Button(buttons, text="Remove", command=self.remove_browser).pack(fill="x", pady=1)
+        self.browser_list = BrowserList(browser_box)
+        self.browser_list.pack(fill="both", expand=True)
         ttk.Label(
             browser_box,
-            text="Safari is set up already. Add any other browser by choosing its app, so "
-            "OnTask reads\nthe real bundle id and matches it even when the app's process "
-            "name differs.\n\nSafari and Chromium browsers are read with AppleScript "
-            "(Automation permission). Firefox,\nZen and other Gecko browsers have no "
-            "AppleScript URL, so their address bar is read from\nthe accessibility tree "
-            "instead - best effort, and needs Accessibility.",
+            text="Untick a browser to stop reading its tabs; OnTask still sees the app "
+            "itself.\nAn app is identified by its bundle id, so it keeps matching even "
+            "when its\nprocess name differs from its display name.",
             foreground="#666",
             justify="left",
         ).pack(anchor="w", pady=(8, 0))
 
-    def _row(self, parent, row: int, label: str, var: tk.StringVar, width: int = 12) -> None:
-        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", pady=3)
-        ttk.Entry(parent, textvariable=var, width=width).grid(row=row, column=1, sticky="w", padx=(10, 0))
+    def _row(self, parent, row: int, label: str, var: tk.StringVar, width: int = 12):
+        """Label plus entry. Returns both so callers can grey them out."""
+        widget = ttk.Label(parent, text=label)
+        widget.grid(row=row, column=0, sticky="w", pady=3)
+        entry = ttk.Entry(parent, textvariable=var, width=width)
+        entry.grid(row=row, column=1, sticky="w", padx=(10, 0))
+        return widget, entry
+
+    def _sync_penalty_fields(self) -> None:
+        """Only offer the boxes that the chosen combination actually uses."""
+        on = bool(self.penalty_on_var.get())
+        matching = on and bool(self.penalty_match_var.get())
+        self.penalty_match_check.state(["!disabled"] if on else ["disabled"])
+        for widget in (self.penalty_explain, self.penalty_approved_label):
+            widget.configure(foreground="#666" if matching else "#aaa")
+        self.penalty_approved_entry.state(["!disabled"] if matching else ["disabled"])
+        fixed = on and not matching
+        self.penalty_fixed_label.configure(foreground="" if fixed else "#aaa")
+        self.penalty_fixed_entry.state(["!disabled"] if fixed else ["disabled"])
 
     # -- load / save ------------------------------------------------------
 
@@ -237,6 +286,12 @@ class SettingsWindow:
         self.distraction_var.set(_fmt(cfg.reminder.distraction_grace_seconds))
         self.blocked_var.set(_fmt(cfg.reminder.disapproved_grace_seconds))
         self.suggest_var.set(str(cfg.reminder.suggest_approve_after_yes))
+        penalty = cfg.reminder.clock_penalty
+        self.penalty_on_var.set(penalty.enabled)
+        self.penalty_match_var.set(penalty.match_situation)
+        self.penalty_approved_var.set(_fmt(penalty.approved_seconds))
+        self.penalty_fixed_var.set(_fmt(penalty.fixed_seconds))
+        self._sync_penalty_fields()
         self.policy_var.set(_POLICY_TO_LABEL[cfg.reminder.no_response.policy])
         self.renag_var.set(_fmt(cfg.reminder.no_response.renag_seconds))
         self.max_alerts_var.set(str(cfg.reminder.no_response.max_alerts))
@@ -245,12 +300,13 @@ class SettingsWindow:
         self.prompt_ui_var.set(_PROMPT_TO_LABEL[cfg.general.prompt_ui])
         self.start_var.set(cfg.general.start_session_on_launch)
         self.sound_var.set(cfg.general.play_sound)
+        self.answer_sound_var.set(cfg.general.play_answer_sound)
+        self.position_var.set(_POSITION_TO_LABEL[cfg.general.prompt_position])
         self.menubar_var.set(cfg.general.show_elapsed_in_menu_bar)
         self.toggle_key_var.set(cfg.general.hotkeys.toggle_session)
         self.yes_key_var.set(cfg.general.hotkeys.answer_yes)
         self.no_key_var.set(cfg.general.hotkeys.answer_no)
-        self.browsers = list(cfg.general.browsers)
-        self._refresh_browser_list()
+        self.browser_list.set_browsers(cfg.general.browsers)
         self._update_preview()
 
     def _on_profile_selected(self, _event=None) -> None:
@@ -358,56 +414,6 @@ class SettingsWindow:
         self.current_profile = None
         self._load_into_widgets()
 
-    def _refresh_browser_list(self) -> None:
-        self.browser_list.delete(0, "end")
-        for browser in self.browsers:
-            self.browser_list.insert("end", browser.describe())
-
-    def add_browser(self) -> None:
-        """Pick a .app and read its identity out of the bundle."""
-        chosen = filedialog.askopenfilename(
-            parent=self.root,
-            title="Choose a browser",
-            initialdir="/Applications",
-            filetypes=[("Applications", "*.app"), ("All files", "*")],
-        )
-        if not chosen:
-            return
-        try:
-            browser = inspect_app(chosen)
-        except BrowserError as exc:
-            messagebox.showerror("OnTask", str(exc))
-            return
-        for existing in self.browsers:
-            if existing.bundle_id == browser.bundle_id:
-                messagebox.showinfo("OnTask", f"{browser.name} is already in the list.")
-                return
-        if browser.flavour == UNSUPPORTED:
-            keep = messagebox.askyesno(
-                "OnTask",
-                f"{browser.name} offers no way to read the address of its active tab, so "
-                "OnTask can only tell that the app is in front, not which site.\n\n"
-                "Add it anyway?",
-            )
-            if not keep:
-                return
-        self.browsers.append(browser)
-        self._refresh_browser_list()
-        self.browser_list.selection_clear(0, "end")
-        self.browser_list.selection_set("end")
-        if browser.flavour == ACCESSIBILITY:
-            self._flash(f"Added {browser.name}. Reading its tabs needs Accessibility permission.")
-        else:
-            self._flash(f"Added {browser.name}.")
-
-    def remove_browser(self) -> None:
-        selection = self.browser_list.curselection()
-        if not selection:
-            return
-        removed = self.browsers.pop(selection[0])
-        self._refresh_browser_list()
-        self._flash(f"Removed {removed.name}.")
-
     def revert(self) -> None:
         self.config = Config.load(self.config.path)
         self._load_into_widgets()
@@ -449,6 +455,12 @@ class SettingsWindow:
         reminder.distraction_grace_seconds = _number(self.distraction_var.get(), "Off-task seconds")
         reminder.disapproved_grace_seconds = _number(self.blocked_var.get(), "Blocked app seconds")
         reminder.suggest_approve_after_yes = int(_number(self.suggest_var.get(), "Yes answers"))
+        reminder.clock_penalty = ClockPenalty(
+            enabled=bool(self.penalty_on_var.get()),
+            match_situation=bool(self.penalty_match_var.get()),
+            approved_seconds=_number(self.penalty_approved_var.get(), "Approved-list seconds"),
+            fixed_seconds=_number(self.penalty_fixed_var.get(), "Fixed penalty seconds"),
+        )
         reminder.no_response = NoResponse(
             policy=_LABEL_TO_POLICY[self.policy_var.get()],
             renag_seconds=_number(self.renag_var.get(), "Re-alert seconds"),
@@ -458,11 +470,13 @@ class SettingsWindow:
         cfg.general.prompt_ui = _LABEL_TO_PROMPT[self.prompt_ui_var.get()]
         cfg.general.start_session_on_launch = bool(self.start_var.get())
         cfg.general.play_sound = bool(self.sound_var.get())
+        cfg.general.play_answer_sound = bool(self.answer_sound_var.get())
+        cfg.general.prompt_position = _LABEL_TO_POSITION[self.position_var.get()]
         cfg.general.show_elapsed_in_menu_bar = bool(self.menubar_var.get())
         cfg.general.hotkeys.toggle_session = self.toggle_key_var.get().strip()
         cfg.general.hotkeys.answer_yes = self.yes_key_var.get().strip()
         cfg.general.hotkeys.answer_no = self.no_key_var.get().strip()
-        cfg.general.browsers = list(self.browsers)
+        cfg.general.browsers = self.browser_list.selected()
 
     def _flash(self, message: str) -> None:
         self.status.config(text=message)
@@ -481,6 +495,16 @@ _PROMPT_TO_LABEL = {
     "both": "Notification, then window",
 }
 _LABEL_TO_PROMPT = {v: k for k, v in _PROMPT_TO_LABEL.items()}
+_POSITION_TO_LABEL = {
+    "center": "Centre of the screen",
+    "top_left": "Top left",
+    "top_center": "Top middle",
+    "top_right": "Top right",
+    "bottom_left": "Bottom left",
+    "bottom_center": "Bottom middle",
+    "bottom_right": "Bottom right",
+}
+_LABEL_TO_POSITION = {v: k for k, v in _POSITION_TO_LABEL.items()}
 
 
 def _lines(widget: tk.Text) -> list[str]:
@@ -529,7 +553,9 @@ def main(argv: list[str] | None = None) -> int:
         root.tk.call("tk", "scaling", 1.4)
     except tk.TclError:
         pass
-    SettingsWindow(root, path)
+    window = SettingsWindow(root, path)
+    bring_to_front(root)
+    watch_raise(root, window.config.path, ipc.RAISE_SETTINGS)
     root.mainloop()
     return 0
 

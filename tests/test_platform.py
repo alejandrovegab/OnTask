@@ -311,6 +311,9 @@ class MenuBarTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "config.json"
             cfg = Config()
+            # The shell offers the browser picker on a first run, which would
+            # spawn a real window; this is a test of the menu, not of setup.
+            cfg.setup_complete = True
             cfg.general.hotkeys.toggle_session = ""  # avoid the Accessibility prompt
             cfg.general.hotkeys.answer_yes = ""
             cfg.general.hotkeys.answer_no = ""
@@ -318,6 +321,7 @@ class MenuBarTest(unittest.TestCase):
             with mock.patch("ontask.app.Config.load", return_value=Config.load(path)), \
                  mock.patch("rumps.Timer"):
                 app = OnTaskApp()
+                self.assertIsNone(app.controller._setup_proc, "no first-run window spawned")
                 app.refresh()
                 titles = [item.title for item in app.status_items.values()]
                 self.assertTrue(any("No session running" in t for t in titles))
