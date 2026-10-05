@@ -344,6 +344,26 @@ class IgnoredCheckinNoticeTest(unittest.TestCase):
         self.assertEqual(self._announce(0), "No answer - reminders reset to the shortest interval.")
 
 
+class SuggestionMessageTest(unittest.TestCase):
+    def _message(self, count):
+        from ontask.app import Controller
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.json"
+            cfg = Config()
+            cfg.reminder.suggest_approve_after_yes = count
+            cfg.save(path)
+            with mock.patch("ontask.app.get_provider"):
+                controller = Controller(config_path=path)
+            return controller.suggestion_message(UNLISTED_APP, "app:Messages")
+
+    def test_the_count_comes_from_the_setting(self):
+        self.assertIn("Messages 5 times.", self._message(5))
+        self.assertIn("Messages twice.", self._message(2))
+        self.assertIn("Messages once.", self._message(1))
+        self.assertIn("Add app:Messages to the approved list for Deep Work?", self._message(3))
+
+
 class SummaryTest(unittest.TestCase):
     def _events(self):
         # 09:00 local on a fixed day, so hour bucketing is deterministic.

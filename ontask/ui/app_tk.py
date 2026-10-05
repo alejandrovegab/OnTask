@@ -93,11 +93,7 @@ class TkShell(Shell):
         self.status_var.set(f"{self.status_var.get()}\n{message}")
 
     def ask_add_rule(self, target, rule: str, controller: Controller) -> None:
-        if messagebox.askyesno(
-            "OnTask",
-            f"You've said you're on task in {target.describe()} three times.\n\n"
-            f"Add {rule} to the approved list for {controller.config.active_profile}?",
-        ):
+        if messagebox.askyesno("OnTask", controller.suggestion_message(target, rule)):
             controller.add_rule(rule, "approved")
 
     def refresh(self) -> None:
