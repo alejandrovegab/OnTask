@@ -412,7 +412,7 @@ class ShellInterfaceTest(unittest.TestCase):
         # The controller calls Shell methods unconditionally, so a shell that
         # does not inherit the defaults crashes the first time a new one lands.
         try:
-            from ontask.ui.app_tk import TkShell
+            from ontask.ui.tk.shell import TkShell
         except ImportError as exc:  # pragma: no cover - no Tk on this machine
             self.skipTest(f"Tk unavailable: {exc}")
         from ontask.app import Shell

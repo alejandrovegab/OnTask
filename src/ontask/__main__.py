@@ -22,7 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.settings:
-        from .ui.settings_app import main as settings_main
+        from .ui.tk.settings import main as settings_main
 
         return settings_main([args.config] if args.config else [])
 
@@ -57,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
                 mac_run(config_path)
                 return 0
 
-        from .ui.app_tk import run as tk_run
+        from .ui.tk.shell import run as tk_run
 
         tk_run(config_path)
         return 0

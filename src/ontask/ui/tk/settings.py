@@ -4,7 +4,7 @@ Runs as its own process (launched from the menu bar) so Tk never competes with
 the AppKit run loop. It writes config.json; the running app notices the change
 by mtime and reloads without a restart.
 
-Usage: python -m ontask.ui.settings_app [path/to/config.json]
+Usage: python -m ontask.ui.tk.settings [path/to/config.json]
 """
 
 from __future__ import annotations
@@ -14,12 +14,10 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
-from ontask import ipc  # noqa: E402
-from ontask.core.config import ClockPenalty, Config, NoResponse, Profile  # noqa: E402
-from ontask.ui.browser_setup import BrowserList  # noqa: E402
-from ontask.ui.tk_window import bring_to_front, watch_raise  # noqa: E402
+from ontask import ipc
+from ontask.core.config import ClockPenalty, Config, NoResponse, Profile
+from ontask.ui.tk.browser_setup import BrowserList
+from ontask.ui.tk.window import bring_to_front, watch_raise
 
 RULE_HELP = (
     "One rule per line.   app:Slack   site:github.com   site:*.google.com   "

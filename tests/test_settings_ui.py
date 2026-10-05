@@ -32,10 +32,10 @@ class SettingsWindowTest(unittest.TestCase):
     def setUp(self):
         from unittest import mock
 
-        from ontask.ui.settings_app import SettingsWindow
+        from ontask.ui.tk.settings import SettingsWindow
 
         patcher = mock.patch(
-            "ontask.ui.browser_setup.installed_browsers", return_value=list(INSTALLED)
+            "ontask.ui.tk.browser_setup.installed_browsers", return_value=list(INSTALLED)
         )
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -195,10 +195,10 @@ class FirstRunWindowTest(unittest.TestCase):
     def setUp(self):
         from unittest import mock
 
-        from ontask.ui.browser_setup import FirstRunWindow
+        from ontask.ui.tk.browser_setup import FirstRunWindow
 
         patcher = mock.patch(
-            "ontask.ui.browser_setup.installed_browsers", return_value=list(INSTALLED)
+            "ontask.ui.tk.browser_setup.installed_browsers", return_value=list(INSTALLED)
         )
         patcher.start()
         self.addCleanup(patcher.stop)

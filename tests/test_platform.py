@@ -434,7 +434,7 @@ class EntryPointTest(unittest.TestCase):
             path = Path(tmp) / "alt" / "config.json"
             with (
                 mock.patch.object(sys, "platform", "linux"),
-                mock.patch("ontask.ui.app_tk.run") as tk_run,
+                mock.patch("ontask.ui.tk.shell.run") as tk_run,
             ):
                 self.assertEqual(entry.main(["--config", str(path)]), 0)
             tk_run.assert_called_once_with(path)
