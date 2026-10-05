@@ -26,7 +26,7 @@ include = ["ontask*"]
 dev = [
     "pytest>=8",
     "ruff>=0.15",
-    "bandit>=1.8",
+    "bandit[toml]>=1.8",
     "pip-audit>=2.7",
 ]
 
@@ -43,3 +43,9 @@ select = ["E", "F", "W", "I", "B", "UP"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["ontask"]
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+# try/except/pass and try/except/continue are how each OS integration degrades
+# instead of crashing when a permission or framework is missing.
+skips = ["B110", "B112"]

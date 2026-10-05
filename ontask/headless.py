@@ -30,9 +30,8 @@ class ConsoleShell(Shell):
 
 
 def run(config_path: str | None = None) -> int:
-    controller = Controller(
-        shell=ConsoleShell(), config_path=Path(config_path) if config_path else None
-    )
+    path = Path(config_path) if config_path else None
+    controller = Controller(shell=ConsoleShell(), config_path=path)
     controller.start_session()
     print(f"Config: {controller.config.path}")
     print(f"Focus provider: {type(controller.focus).__name__}")

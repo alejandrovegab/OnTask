@@ -55,7 +55,8 @@ class _Waker(NSObject):
 class OnTaskApp(rumps.App):
     def __init__(self, config_path: Path | None = None) -> None:
         super().__init__("OnTask", title="OnTask", quit_button=None)
-        self.controller = Controller(shell=self, config_path=config_path)
+        # `shell` is OnTask's UI shell, not subprocess's shell flag.
+        self.controller = Controller(shell=self, config_path=config_path)  # nosec B604
         self.prompt = PromptWindow(self._on_answer)
         self.notifier = Notifier(self._on_answer)
         self.hotkeys = HotkeyManager(self.controller)

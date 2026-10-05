@@ -21,7 +21,8 @@ class TkShell(Shell):
         self.root = tk.Tk()
         self.root.title("OnTask")
         self.root.minsize(360, 190)
-        self.controller = Controller(shell=self, config_path=config_path)
+        # `shell` is OnTask's UI shell, not subprocess's shell flag.
+        self.controller = Controller(shell=self, config_path=config_path)  # nosec B604
         self.prompt = TkPrompt(self.root, self._on_answer)
         self.hotkeys = HotkeyManager(self.controller)
         self.status_var = tk.StringVar()
