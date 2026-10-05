@@ -29,6 +29,7 @@ dev = [
     "ruff>=0.15",
     "bandit[toml]>=1.8",
     "pip-audit>=2.7",
+    "uv>=0.5",
 ]
 # Building OnTask.app; see scripts/build-mac-app.sh.
 bundle = [
