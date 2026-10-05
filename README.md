@@ -77,12 +77,17 @@ notification check-in style; OnTask reads the current status without raising a
 dialog otherwise.
 
 Running from source means the prompts name your terminal and banners say
-"Python". Build a bundle so they say OnTask:
+"Python". Build the app so they say OnTask:
 
 ```sh
-./.venv/bin/pip install py2app
-./.venv/bin/python packaging/macos/setup_app.py py2app
+./scripts/build-mac-app.sh
+open dist/OnTask.app
 ```
+
+The script signs the app with a local certificate so macOS keeps OnTask's
+permissions across rebuilds; creating that certificate once is described in
+[docs/maintaining.md](docs/maintaining.md). Without it the build still works,
+but macOS asks for the permissions again after every rebuild.
 
 ## Using it
 
