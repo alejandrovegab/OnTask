@@ -30,6 +30,10 @@ dev = [
     "bandit[toml]>=1.8",
     "pip-audit>=2.7",
 ]
+# Building OnTask.app; see scripts/build-mac-app.sh.
+bundle = [
+    "py2app>=0.28; sys_platform == 'darwin'",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
