@@ -19,29 +19,32 @@ if TYPE_CHECKING:
 
 class X11FocusProvider(FocusProvider):
     def __init__(self) -> None:
-        self._available = bool(shutil.which("xdotool"))
+        # Resolved once to absolute paths: each poll then runs exactly the
+        # tools found at startup, rather than searching PATH again.
+        self._xdotool = shutil.which("xdotool")
+        self._xprop = shutil.which("xprop")
 
     def current(self, browsers: list[Browser] | None = None) -> FocusTarget:
-        if not self._available:
+        if not self._xdotool:
             return FocusTarget()
         try:
-            return _xdotool_target()
+            return _xdotool_target(self._xdotool, self._xprop)
         except Exception:
             return FocusTarget()
 
 
-def _xdotool_target() -> FocusTarget:
+def _xdotool_target(xdotool: str, xprop: str | None) -> FocusTarget:
     def run(args: list[str]) -> str:
         proc = subprocess.run(args, capture_output=True, text=True, timeout=1.0)
         return proc.stdout.strip() if proc.returncode == 0 else ""
 
-    window = run(["xdotool", "getactivewindow"])
+    window = run([xdotool, "getactivewindow"])
     if not window:
         return FocusTarget()
-    title = run(["xdotool", "getwindowname", window])
+    title = run([xdotool, "getwindowname", window])
     name = ""
-    if shutil.which("xprop"):
-        wm_class = run(["xprop", "-id", window, "WM_CLASS"])
+    if xprop:
+        wm_class = run([xprop, "-id", window, "WM_CLASS"])
         if '"' in wm_class:
             parts = [p for p in wm_class.split('"') if p.strip(", ")]
             if parts:

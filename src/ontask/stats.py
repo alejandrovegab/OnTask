@@ -16,7 +16,6 @@ the statistics window, and is testable with an injected clock.
 from __future__ import annotations
 
 import json
-import os
 import time
 from collections import defaultdict
 from collections.abc import Callable
@@ -25,8 +24,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .core.files import make_private, read_capped, write_private
+
 # Roughly a year of heavy use; trimmed oldest-first past this.
 MAX_EVENTS = 20000
+
+# MAX_EVENTS of them come to a few megabytes; a file far past that is damaged.
+MAX_STATS_BYTES = 32_000_000
 
 # Writing on every record would hammer the disk during a distracted stretch.
 SAVE_DEBOUNCE_SECONDS = 10.0
@@ -60,10 +64,11 @@ class Stats:
     def load(cls, path: Path | None = None, clock: Callable[[], float] = time.time) -> Stats:
         path = Path(path) if path else default_stats_path()
         try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
+            raw = json.loads(read_capped(path, MAX_STATS_BYTES))
+            make_private(path)
         except FileNotFoundError:
             return cls(path=path, clock=clock)
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError, ValueError):
             # Statistics are never worth blocking a session over.
             return cls(path=path, clock=clock)
         events = raw.get("events") if isinstance(raw, dict) else None
@@ -77,13 +82,7 @@ class Stats:
             return None
         target = Path(self.path)
         try:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            tmp = target.with_name(target.name + ".tmp")
-            tmp.write_text(
-                json.dumps({"events": self.events}, separators=(",", ":")) + "\n",
-                encoding="utf-8",
-            )
-            os.replace(tmp, target)
+            write_private(target, json.dumps({"events": self.events}, separators=(",", ":")) + "\n")
         except OSError:
             return None
         self._dirty = False

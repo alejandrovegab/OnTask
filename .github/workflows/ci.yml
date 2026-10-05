@@ -5,6 +5,10 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # Weekly, so a vulnerability published against a pinned version is caught
+  # even in a week when nothing is pushed.
+  schedule:
+    - cron: "0 9 * * 1"
 
 # Read-only by default; no job here needs to write to the repository.
 permissions:
@@ -27,9 +31,18 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
-          cache-dependency-path: pyproject.toml
-      - name: Install tools
-        run: python -m pip install "ruff>=0.15" "bandit[toml]>=1.8"
+          cache-dependency-path: requirements.txt
+      - name: Install pinned tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --require-hashes -r requirements.txt
+      - name: Lock file matches pyproject.toml
+        run: |
+          UV=uv ./scripts/update-lock.sh
+          git diff --exit-code requirements.txt || {
+            echo "::error::requirements.txt is out of date: run ./scripts/update-lock.sh"
+            exit 1
+          }
       - name: Lint
         run: ruff check --output-format github src tests packaging
       - name: Formatting
@@ -60,13 +73,16 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: requirements.txt
       - name: Install
         # The runner's Python ships its own pip and setuptools, which may be
-        # old enough for pip-audit to flag; bring them current first.
+        # old enough for pip-audit to flag; bring them current first. Then
+        # every dependency comes from the lock, hash-checked, and OnTask
+        # itself is installed without letting pip resolve anything further.
         run: |
           python -m pip install --upgrade pip setuptools
-          python -m pip install -e ".[dev]"
+          python -m pip install --require-hashes -r requirements.txt
+          python -m pip install --no-deps -e .
       - name: Tests
         if: runner.os != 'Linux'
         run: python -m pytest -ra

@@ -10,12 +10,14 @@ if [ ! -d .venv ]; then
     ./.venv/bin/pip install -q --upgrade pip
 fi
 
-# The package lives under src/, so it has to be installed (editable) to be
-# importable. Reinstall when pyproject.toml changes: new dependencies, layout.
+# Dependencies come from the lock (exact versions, hash-checked); OnTask itself
+# is then installed editable, since the package lives under src/. Redone when
+# either file changes.
 stamp=.venv/.ontask-installed
-if [ ! -f "$stamp" ] || [ pyproject.toml -nt "$stamp" ]; then
+if [ ! -f "$stamp" ] || [ pyproject.toml -nt "$stamp" ] || [ requirements.txt -nt "$stamp" ]; then
     echo "Installing OnTask into the virtualenv..."
-    ./.venv/bin/pip install -q -e .
+    ./.venv/bin/pip install -q --require-hashes -r requirements.txt
+    ./.venv/bin/pip install -q --no-deps -e .
     touch "$stamp"
 fi
 

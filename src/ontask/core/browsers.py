@@ -29,6 +29,7 @@ inspect browsers anywhere.
 from __future__ import annotations
 
 import plistlib
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -48,6 +49,17 @@ FLAVOUR_LABELS = {
     ACCESSIBILITY: "Accessibility",
     UNSUPPORTED: "App only",
 }
+
+
+# What a real bundle identifier is made of: letters, digits and hyphens, in two
+# or more dot-separated parts. The id is written into AppleScript source (see
+# platform/macos/focus.py), so nothing else - a quote, a backslash, a newline -
+# may ever get through.
+_BUNDLE_ID = re.compile(r"[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+")
+
+
+def valid_bundle_id(value: str) -> bool:
+    return bool(value) and len(value) <= 255 and _BUNDLE_ID.fullmatch(value) is not None
 
 
 class BrowserError(Exception):
@@ -75,6 +87,9 @@ class Browser:
             bundle_id = LEGACY_NAMES.get(name, "")
             if not bundle_id:
                 return None
+        if not valid_bundle_id(bundle_id):
+            # Hand-edited or damaged: not something to address scripts to.
+            return None
         flavour = str(d.get("flavour") or KNOWN_FLAVOURS.get(bundle_id, UNSUPPORTED))
         return cls(
             name=name or bundle_id,
@@ -279,6 +294,11 @@ def inspect_app(path: str | Path) -> Browser:
         raise BrowserError(
             f"{app.name} declares no bundle identifier, so OnTask has no reliable way to "
             "recognise it when it is in front."
+        )
+    if not valid_bundle_id(bundle_id):
+        raise BrowserError(
+            f"{app.name} declares an unusual bundle identifier ({bundle_id!r}), so OnTask "
+            "will not use it."
         )
     name = (
         str(info.get("CFBundleDisplayName") or info.get("CFBundleName") or app.stem).strip()

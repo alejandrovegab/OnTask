@@ -40,3 +40,16 @@ To sign with a different certificate, set `ONTASK_SIGNING_IDENTITY` to its name.
 The default certificate lasts **one year**. When it expires the build falls
 back to ad-hoc signing and says so. Create a new one with the same name,
 delete the old one, rebuild, and grant OnTask's permissions once more.
+
+## Dependencies
+
+`requirements.txt` is a lock: every dependency of OnTask and its tooling at an
+exact version, with the hashes of its files, for macOS, Windows and Linux at
+once. Everything installs from it with `--require-hashes`.
+
+- **Adding or changing a dependency:** edit `pyproject.toml`, then run
+  `./scripts/update-lock.sh` and commit both files. CI fails if they disagree.
+- **Taking newer versions:** `./scripts/update-lock.sh --upgrade` (everything)
+  or `./scripts/update-lock.sh --upgrade-package NAME` (one), then run the tests.
+- **A vulnerability report** (from CI's weekly `pip-audit`, or Dependabot):
+  upgrade that package as above.

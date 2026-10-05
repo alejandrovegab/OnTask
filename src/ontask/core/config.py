@@ -15,8 +15,12 @@ from typing import Any
 
 from .browsers import Browser, default_browsers
 from .browsers import coerce as coerce_browser
+from .files import ensure_private_dir, make_private, read_capped, write_private
 
 CONFIG_VERSION = 2
+
+# A real config is a few kilobytes; anything past this is damaged or not ours.
+MAX_CONFIG_BYTES = 1_000_000
 
 
 def default_config_path() -> Path:
@@ -432,18 +436,27 @@ class Config:
     @classmethod
     def load(cls, path: Path | None = None) -> Config:
         """Read config from disk, falling back to defaults on a missing or bad file."""
-        path = Path(path) if path else default_config_path()
+        default = default_config_path()
+        path = Path(path) if path else default
+        if path == default:
+            # OnTask's own folder: make sure it is private, including one
+            # created by an older version with default permissions.
+            ensure_private_dir(path.parent, tighten_existing=True)
         try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
+            raw = json.loads(read_capped(path, MAX_CONFIG_BYTES))
+            make_private(path)
         except FileNotFoundError:
             cfg = cls()
             cfg.path = path
             cfg.save()
             return cfg
-        except (json.JSONDecodeError, OSError):
-            # A corrupt file should not stop the app from starting; keep a copy.
+        except (json.JSONDecodeError, OSError, ValueError):
+            # A corrupt file should not stop the app from starting; keep a
+            # private copy for inspection.
+            bad = path.with_suffix(".json.bad")
             try:
-                path.replace(path.with_suffix(".json.bad"))
+                path.replace(bad)
+                os.chmod(bad, 0o600)
             except OSError:
                 pass
             cfg = cls()
@@ -462,10 +475,7 @@ class Config:
     def save(self, path: Path | None = None) -> Path:
         """Atomically write config to disk so a crash cannot truncate it."""
         target = Path(path) if path else (self.path or default_config_path())
-        target.parent.mkdir(parents=True, exist_ok=True)
-        tmp = target.with_name(target.name + ".tmp")
-        tmp.write_text(json.dumps(self.to_dict(), indent=2) + "\n", encoding="utf-8")
-        os.replace(tmp, target)
+        write_private(target, json.dumps(self.to_dict(), indent=2) + "\n")
         self.path = target
         return target
 

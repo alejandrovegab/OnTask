@@ -32,6 +32,11 @@ CATEGORY = "ONTASK_CHECKIN"
 ACTION_YES = "ONTASK_YES"
 ACTION_NO = "ONTASK_NO"
 
+# What a check-in banner says when the system hides notification previews.
+HIDDEN_PREVIEW_PLACEHOLDER = "Check-in"
+# UNNotificationCategoryOptionHiddenPreviewsShowTitle: keep "OnTask" visible.
+HIDDEN_PREVIEWS_SHOW_TITLE = 1 << 2
+
 # UNAuthorizationOptionAlert | UNAuthorizationOptionSound
 AUTH_OPTIONS = (1 << 2) | (1 << 1)
 
@@ -124,8 +129,12 @@ class Notifier:
     def _category(self):
         yes = UN.UNNotificationAction.actionWithIdentifier_title_options_(ACTION_YES, "Yes", 0)
         no = UN.UNNotificationAction.actionWithIdentifier_title_options_(ACTION_NO, "No", 0)
-        return UN.UNNotificationCategory.categoryWithIdentifier_actions_intentIdentifiers_options_(
-            CATEGORY, [yes, no], [], 0
+        # A check-in's body names the site or app you were on. When previews
+        # are hidden (on the lock screen, by default), show "OnTask" and a
+        # neutral placeholder instead of that.
+        category = UN.UNNotificationCategory
+        return category.categoryWithIdentifier_actions_intentIdentifiers_hiddenPreviewsBodyPlaceholder_options_(  # noqa: E501
+            CATEGORY, [yes, no], [], HIDDEN_PREVIEW_PLACEHOLDER, HIDDEN_PREVIEWS_SHOW_TITLE
         )
 
     # -- authorisation ----------------------------------------------------

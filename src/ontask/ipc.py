@@ -18,6 +18,8 @@ import os
 import time
 from pathlib import Path
 
+from .core.files import ensure_private_dir, make_private, write_private
+
 LOCK_NAME = ".ontask.lock"
 OPEN_SETTINGS = ".ontask-open-settings"
 RAISE_SETTINGS = ".ontask-raise-settings"
@@ -91,8 +93,11 @@ class Lock:
         if self._fd is not None:
             return True
         try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
+            ensure_private_dir(self.path.parent)
             fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o600)
+            # The mode above only applies to a new file; one left by an older
+            # version keeps whatever it had.
+            make_private(self.path)
         except OSError:
             # Without a lock the app still runs; it just cannot be single.
             return True
@@ -135,8 +140,7 @@ class Signal:
 
     def send(self) -> None:
         try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            self.path.write_text(str(time.time()), encoding="utf-8")
+            write_private(self.path, str(time.time()))
         except OSError:
             pass
 
