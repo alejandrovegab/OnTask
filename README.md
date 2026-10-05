@@ -276,7 +276,9 @@ falls back to plain ladder reminders rather than nagging.
 ## Development
 
 ```sh
-./.venv/bin/pip install -e ".[dev]"          # test, lint and security tools
+./.venv/bin/pip install --require-hashes -r requirements.txt   # pinned dependencies and tools
+./.venv/bin/pip install --no-deps -e .       # OnTask itself
+./scripts/update-lock.sh                     # after changing dependencies in pyproject.toml
 ./.venv/bin/python -m pytest                 # the suite: fake clock, runs in about a second
 ./.venv/bin/ruff check src tests             # lint
 ./.venv/bin/ruff format src tests            # format
@@ -287,7 +289,11 @@ falls back to plain ladder reminders rather than nagging.
 Tests never touch your real settings: `tests/conftest.py` points them at a
 throwaway config directory.
 
-Every pull request runs CI (`.github/workflows/ci.yml`):
+Dependencies are locked in `requirements.txt`: exact versions with file
+hashes, for every platform. Edit `pyproject.toml`, then run
+`./scripts/update-lock.sh`; CI checks that the two agree.
+
+Every pull request runs CI (`.github/workflows/ci.yml`), and it also runs weekly:
 - lint, formatting and a `bandit` security scan,
 - the tests on macOS, Windows and Linux,
 - `pip-audit` of each platform's dependencies.
