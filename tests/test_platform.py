@@ -466,6 +466,24 @@ class ProviderSelectionTest(unittest.TestCase):
         self.assertTrue(provider.current().is_unknown)
 
 
+class X11ProviderTest(unittest.TestCase):
+    def test_tools_run_by_the_absolute_path_found_at_startup(self):
+        from ontask.platform.linux.focus import X11FocusProvider
+
+        found = {"xdotool": "/usr/bin/xdotool", "xprop": "/usr/bin/xprop"}
+        with mock.patch("shutil.which", side_effect=found.get):
+            provider = X11FocusProvider()
+        outputs = iter(["42", "Some Title", 'WM_CLASS(STRING) = "slack", "Slack"'])
+        run = mock.Mock(side_effect=lambda *a, **k: mock.Mock(returncode=0, stdout=next(outputs)))
+        with mock.patch("subprocess.run", run):
+            target = provider.current()
+        self.assertEqual(
+            [call[0][0][0] for call in run.call_args_list],
+            ["/usr/bin/xdotool", "/usr/bin/xdotool", "/usr/bin/xprop"],
+        )
+        self.assertEqual(target.app_name, "Slack")
+
+
 class SelfCommandTest(unittest.TestCase):
     """How the app starts its own windows, from source and from a bundle."""
 
