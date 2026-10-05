@@ -21,8 +21,9 @@ if [ ! -x "$PY" ]; then
     exit 1
 fi
 
-echo "==> Installing build tools"
-"$PY" -m pip install -q -e ".[bundle]"
+echo "==> Installing pinned dependencies"
+"$PY" -m pip install -q --require-hashes -r requirements.txt
+"$PY" -m pip install -q --no-deps -e .
 
 echo "==> Building the bundle with py2app"
 rm -rf build dist
