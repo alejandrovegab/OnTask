@@ -31,11 +31,11 @@ jobs:
       - name: Install tools
         run: python -m pip install "ruff>=0.15" "bandit[toml]>=1.8"
       - name: Lint
-        run: ruff check --output-format github ontask tests
+        run: ruff check --output-format github src tests
       - name: Formatting
-        run: ruff format --check ontask tests
+        run: ruff format --check src tests
       - name: Security scan
-        run: bandit -c pyproject.toml -r ontask --severity-level medium
+        run: bandit -c pyproject.toml -r src --severity-level medium
 
   test:
     name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})

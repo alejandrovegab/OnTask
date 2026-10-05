@@ -50,7 +50,7 @@ That creates a virtualenv, installs dependencies, and starts the app. Or by hand
 
 ```sh
 python3 -m venv .venv
-./.venv/bin/pip install -r requirements.txt
+./.venv/bin/pip install -e .
 ./.venv/bin/python -m ontask
 ```
 
@@ -273,8 +273,8 @@ falls back to plain ladder reminders rather than nagging.
 ```sh
 ./.venv/bin/pip install -e ".[dev]"          # test, lint and security tools
 ./.venv/bin/python -m pytest                 # the suite: fake clock, runs in about a second
-./.venv/bin/ruff check ontask tests          # lint
-./.venv/bin/ruff format ontask tests         # format
+./.venv/bin/ruff check src tests             # lint
+./.venv/bin/ruff format src tests            # format
 ./.venv/bin/python -m ontask --headless      # watch focus detection live
 ./.venv/bin/python -m ontask --settings      # settings window on its own
 ```

@@ -1,10 +1,7 @@
 """Timing and rule tests. Everything runs on a fake clock, so it is instant."""
 
-import sys
 import unittest
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ontask.config import Config, Profile
 from ontask.engine import (

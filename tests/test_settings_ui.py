@@ -1,11 +1,8 @@
 """Builds the settings window headlessly and exercises its load/save path."""
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ontask.browsers import ACCESSIBILITY, APPLESCRIPT, Browser
 from ontask.config import Config
