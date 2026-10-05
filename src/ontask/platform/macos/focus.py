@@ -34,6 +34,7 @@ from ...core.browsers import (
     UNSUPPORTED,
     Browser,
     default_browsers,
+    valid_bundle_id,
 )
 from ...focus import FocusProvider, FocusTarget
 
@@ -59,7 +60,20 @@ CACHE_SECONDS = 0.75
 _PROBE_ORDER = (CHROMIUM, SAFARI)
 
 
+# By absolute path, so nothing earlier on PATH can stand in for it.
+OSASCRIPT = "/usr/bin/osascript"
+
+
 def _script_for(flavour: str, bundle: str) -> str:
+    """The AppleScript that reads `bundle`'s front tab.
+
+    The id has to be part of the source rather than passed in at run time:
+    AppleScript resolves a browser's own words ("active tab") when it compiles
+    the script, which needs the target app named then. So the id is checked
+    here, at the point it becomes code, as well as wherever it entered OnTask.
+    """
+    if not valid_bundle_id(bundle):
+        raise ValueError(f"refusing to script an invalid bundle id: {bundle!r}")
     template = _SAFARI_SCRIPT if flavour == SAFARI else _CHROMIUM_SCRIPT
     return template.format(bundle=bundle)
 
@@ -140,8 +154,13 @@ class MacFocusProvider(FocusProvider):
     ) -> tuple[bool, tuple[str, str]]:
         """Run one dialect. Returns (the app was reachable, (url, title))."""
         try:
+            script = _script_for(dialect, target)
+        except ValueError as exc:
+            self.last_error = f"{browser.name}: {exc}"
+            return False, ("", "")
+        try:
             proc = subprocess.run(
-                ["osascript", "-e", _script_for(dialect, target)],
+                [OSASCRIPT, "-e", script],
                 capture_output=True,
                 text=True,
                 timeout=self.timeout,

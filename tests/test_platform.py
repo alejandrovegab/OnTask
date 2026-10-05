@@ -164,6 +164,33 @@ class BundleInspectionTest(unittest.TestCase):
 ZEN = Browser("Zen", "app.zen-browser.zen", ACCESSIBILITY)
 
 
+# A bundle id that would close the AppleScript string and run a command.
+HOSTILE_ID = 'com.evil" to do shell script "touch /tmp/pwned" --'
+
+
+class BundleIdValidationTest(unittest.TestCase):
+    def test_real_ids_pass(self):
+        from ontask.core.browsers import valid_bundle_id
+
+        for good in ("com.apple.Safari", "app.zen-browser.zen", "org.mozilla.firefox"):
+            self.assertTrue(valid_bundle_id(good), good)
+
+    def test_anything_that_could_escape_a_script_string_fails(self):
+        from ontask.core.browsers import valid_bundle_id
+
+        for bad in (HOSTILE_ID, "com.apple.Safari\n", "no-dots", "", "a..b", "com.app\\le"):
+            self.assertFalse(valid_bundle_id(bad), repr(bad))
+
+    def test_a_hostile_config_entry_is_dropped(self):
+        self.assertIsNone(Browser.from_dict({"name": "Evil", "bundle_id": HOSTILE_ID}))
+
+    def test_a_hostile_bundle_is_refused_when_picked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = _fake_app(tmp, "Evil", HOSTILE_ID)
+            with self.assertRaises(BrowserError):
+                inspect_app(app)
+
+
 class FocusTargetTest(unittest.TestCase):
     def test_host_strips_port_and_credentials(self):
         target = FocusTarget(url="https://user:pw@example.com:8443/a/b")
@@ -221,6 +248,21 @@ class MacFocusProviderTest(unittest.TestCase):
         self.assertEqual(target.url, "https://github.com/x")
         self.assertEqual(target.title, "GitHub")
         self.assertEqual(target.host, "github.com")
+
+    def test_osascript_is_run_by_absolute_path(self):
+        provider = self._provider("Safari", "com.apple.Safari", ("https://a.com\nA\n", 0, ""))
+        with mock.patch("subprocess.run", self._run):
+            provider.current(default_browsers())
+        self.assertEqual(self._run.call_args[0][0][0], "/usr/bin/osascript")
+
+    def test_a_hostile_bundle_id_is_never_scripted(self):
+        # Even one that reached the provider without passing through config.
+        evil = Browser("Evil", HOSTILE_ID, SAFARI)
+        provider = self._provider("Evil", HOSTILE_ID)
+        with mock.patch("subprocess.run", self._run):
+            target = provider.current([evil])
+        self._run.assert_not_called()
+        self.assertEqual(target.url, "")
 
     def test_a_browser_that_was_never_added_is_not_queried(self):
         provider = self._provider("Arc", "company.thebrowser.Browser")
