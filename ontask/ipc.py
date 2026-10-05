@@ -6,9 +6,10 @@ statistics windows it launches. They need to say very little to each other -
 so the whole channel is a file whose modification time is the message. That
 needs no port, no permission, and no cleanup if a process dies.
 
-The lock is advisory and self-healing: a lock file naming a pid that is gone is
-treated as stale rather than as a running app, so a crash cannot leave OnTask
-unable to start.
+The single-instance lock is an OS file lock, which the system drops the moment
+the holding process exits - quit, crash or kill alike. Nothing has to clean it
+up, and there is no recorded pid to go stale or be reused by another process,
+so OnTask can never be locked out of starting.
 """
 
 from __future__ import annotations
@@ -32,57 +33,87 @@ def runtime_dir(config_path: Path | None) -> Path:
     return default_config_path().parent
 
 
-def _pid_alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        # Owned by someone else, but it exists.
+if os.name == "nt":
+    import msvcrt
+
+    def _try_lock(fd: int) -> bool:
+        try:
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        except OSError:
+            return False
         return True
-    except OSError:
-        return False
-    return True
+
+    def _unlock(fd: int) -> None:
+        try:
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        except OSError:
+            pass
+
+else:
+    import fcntl
+
+    def _try_lock(fd: int) -> bool:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return False
+        return True
+
+    def _unlock(fd: int) -> None:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        except OSError:
+            pass
 
 
 class Lock:
-    """Single-instance guard naming the pid that holds it."""
+    """Single-instance guard held for the life of the process.
+
+    The descriptor is not inheritable (Python's default), so the helper windows
+    the app spawns cannot keep the lock alive after the app itself has gone.
+    The pid written into the file is for people reading it, not for deciding
+    anything.
+    """
 
     def __init__(self, directory: Path):
         self.path = Path(directory) / LOCK_NAME
-        self.held = False
+        self._fd: int | None = None
 
-    def holder(self) -> int:
-        try:
-            return int(self.path.read_text(encoding="utf-8").strip() or 0)
-        except (OSError, ValueError):
-            return 0
-
-    def running_elsewhere(self) -> bool:
-        pid = self.holder()
-        return pid != os.getpid() and _pid_alive(pid)
+    @property
+    def held(self) -> bool:
+        return self._fd is not None
 
     def acquire(self) -> bool:
-        if self.running_elsewhere():
-            return False
+        if self._fd is not None:
+            return True
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            self.path.write_text(str(os.getpid()), encoding="utf-8")
+            fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o600)
         except OSError:
             # Without a lock the app still runs; it just cannot be single.
             return True
-        self.held = True
+        if not _try_lock(fd):
+            os.close(fd)
+            return False
+        try:
+            os.ftruncate(fd, 0)
+            os.write(fd, str(os.getpid()).encode())
+        except OSError:
+            pass
+        self._fd = fd
         return True
 
     def release(self) -> None:
-        if not self.held:
+        # The file is left in place: unlinking it would let a newcomer lock a
+        # fresh file while a late holder still has the old one.
+        fd, self._fd = self._fd, None
+        if fd is None:
             return
-        self.held = False
+        _unlock(fd)
         try:
-            if self.holder() == os.getpid():
-                self.path.unlink()
+            os.close(fd)
         except OSError:
             pass
 

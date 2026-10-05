@@ -330,17 +330,23 @@ class IpcTest(unittest.TestCase):
 
     def test_a_second_instance_is_refused(self):
         first = ipc.Lock(self.dir)
+        self.addCleanup(first.release)
         self.assertTrue(first.acquire())
-        (self.dir / ipc.LOCK_NAME).write_text("1")  # a pid that is not us
-        self.assertTrue(ipc.Lock(self.dir).running_elsewhere() or True)
+        self.assertFalse(ipc.Lock(self.dir).acquire())
 
-    def test_a_stale_lock_does_not_block_startup(self):
-        (self.dir / ipc.LOCK_NAME).write_text("999999")
-        self.assertTrue(ipc.Lock(self.dir).acquire())
+    def test_a_leftover_lock_file_does_not_block_startup(self):
+        # A quit that skipped cleanup leaves the file, and maybe a pid that a
+        # later process reuses; neither may stop the next launch.
+        (self.dir / ipc.LOCK_NAME).write_text(str(os.getppid()))
+        lock = ipc.Lock(self.dir)
+        self.addCleanup(lock.release)
+        self.assertTrue(lock.acquire())
 
-    def test_a_lock_held_by_this_process_is_reacquirable(self):
-        (self.dir / ipc.LOCK_NAME).write_text(str(os.getpid()))
-        self.assertTrue(ipc.Lock(self.dir).acquire())
+    def test_acquiring_twice_is_harmless(self):
+        lock = ipc.Lock(self.dir)
+        self.addCleanup(lock.release)
+        self.assertTrue(lock.acquire())
+        self.assertTrue(lock.acquire())
 
     def test_a_signal_is_seen_once(self):
         reader = ipc.Signal(self.dir, "marker")
@@ -349,12 +355,20 @@ class IpcTest(unittest.TestCase):
         self.assertTrue(reader.received())
         self.assertFalse(reader.received())
 
-    def test_releasing_removes_the_lock(self):
+    def test_releasing_lets_the_next_instance_start(self):
         lock = ipc.Lock(self.dir)
         lock.acquire()
         lock.release()
-        self.assertFalse((self.dir / ipc.LOCK_NAME).exists())
+        nxt = ipc.Lock(self.dir)
+        self.addCleanup(nxt.release)
+        self.assertTrue(nxt.acquire())
 
+    def test_the_lock_file_is_private(self):
+        lock = ipc.Lock(self.dir)
+        self.addCleanup(lock.release)
+        lock.acquire()
+        if os.name != "nt":
+            self.assertEqual((self.dir / ipc.LOCK_NAME).stat().st_mode & 0o777, 0o600)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
