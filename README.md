@@ -22,10 +22,10 @@ Settings → Reminders, including the rungs themselves and how many yes answers
 each rung requires.
 
 **Drifting off.** If the frontmost window is not on the approved list, OnTask
-waits 2.5 minutes and then checks in. Saying yes buys you one base interval
+waits 1 minute and then checks in. Saying yes buys you one base interval
 (3 minutes) of quiet but **never** advances the ladder, so being distracted can
-never earn you longer gaps. Time spent off task is cumulative: 100 seconds in
-Messages and then 50 in an unlisted tab still trips at 150.
+never earn you longer gaps. Time spent off task is cumulative: 40 seconds in
+Messages and then 20 in an unlisted tab still trips at 60.
 
 **Blocked apps.** Anything on the blocked list gets a much shorter fuse: 10
 seconds after you focus it.
@@ -233,7 +233,7 @@ changes within one poll, no restart needed.
 | --- | --- | --- |
 | `intervals_minutes` | `3, 5, 7, 10, 14, 20` | The ladder rungs. |
 | `advance_after_yes` | `1, 2, 2, 3, 3` | Yes answers needed at each rung. Resized automatically to match the rungs. |
-| `distraction_grace_seconds` | `150` | Off-task time before a check-in. |
+| `distraction_grace_seconds` | `60` | Off-task time before a check-in. |
 | `disapproved_grace_seconds` | `10` | Time on a blocked app before a check-in. |
 | `suggest_approve_after_yes` | `3` | Consecutive yes answers before offering to approve. `0` disables. |
 | `no_response.policy` | `renag_then_no` | Or `wait`, or `pause_session`. |
