@@ -68,9 +68,14 @@ class Browser:
         d = d or {}
         bundle_id = str(d.get("bundle_id") or "").strip()
         name = str(d.get("name") or "").strip()
-        if not bundle_id and not name:
-            return None
-        flavour = str(d.get("flavour") or UNSUPPORTED)
+        if not bundle_id:
+            # The bundle id is the identity: it is what the frontmost app is
+            # matched on and what AppleScript is addressed by. A name alone can
+            # do neither, so a known name is upgraded and anything else dropped.
+            bundle_id = LEGACY_NAMES.get(name, "")
+            if not bundle_id:
+                return None
+        flavour = str(d.get("flavour") or KNOWN_FLAVOURS.get(bundle_id, UNSUPPORTED))
         return cls(
             name=name or bundle_id,
             bundle_id=bundle_id,
@@ -91,12 +96,10 @@ class Browser:
 
         The bundle id is the identity. Comparing names instead is what used to
         make Zen invisible - it is called ``Zen`` but its process reports
-        ``zen`` - so a browser that has an id is matched on the id alone, and
-        the name is consulted only for an entry that carries no id at all.
+        ``zen`` - so only the id is compared. `app_name` is accepted so callers
+        need not care which one decides.
         """
-        if self.bundle_id:
-            return bool(bundle_id) and bundle_id == self.bundle_id
-        return bool(app_name) and app_name == self.name
+        return bool(self.bundle_id) and bundle_id == self.bundle_id
 
     @property
     def route(self) -> str:

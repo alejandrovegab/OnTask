@@ -72,10 +72,18 @@ class BrowserDefaultsTest(unittest.TestCase):
         self.assertTrue(zen.matches("zen", "app.zen-browser.zen"))
         self.assertFalse(zen.matches("Zen", "org.mozilla.firefox"))
 
-    def test_name_is_only_used_when_there_is_no_bundle_id(self):
+    def test_a_matching_name_without_the_id_is_not_a_match(self):
         browser = Browser("Odd", "com.example.odd", CHROMIUM)
-        self.assertTrue(Browser("Odd", "", CHROMIUM).matches("Odd", ""))
         self.assertFalse(browser.matches("Odd", ""))
+        self.assertFalse(browser.matches("Odd", "com.example.other"))
+
+    def test_entries_without_a_bundle_id_are_upgraded_or_dropped(self):
+        # A name cannot address AppleScript or match the frontmost app, and
+        # Settings could not show such an entry, so it must not survive load.
+        upgraded = Browser.from_dict({"name": "Zen"})
+        self.assertEqual(upgraded.bundle_id, "app.zen-browser.zen")
+        self.assertEqual(upgraded.flavour, ACCESSIBILITY)
+        self.assertIsNone(Browser.from_dict({"name": "Orion", "flavour": "safari"}))
 
     def test_permission_kind_follows_the_flavour(self):
         self.assertTrue(needs_accessibility(Browser("Zen", "z", ACCESSIBILITY)))
