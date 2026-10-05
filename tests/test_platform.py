@@ -341,6 +341,53 @@ class MenuBarTest(unittest.TestCase):
                 self.assertIn("Deep Work", app._profile_items)
 
 
+@unittest.skipUnless(sys.platform == "darwin", "macOS accessibility API")
+class AddressBarWalkTest(unittest.TestCase):
+    """The accessibility walk, run over a fake tree instead of a real browser."""
+
+    def setUp(self):
+        from ontask.focus import ax
+
+        self.ax = ax
+        self.calls = 0
+
+    def _node(self, role="AXGroup", value=None, description="", children=()):
+        return {
+            self.ax.kAXRoleAttribute: role,
+            self.ax.kAXValueAttribute: value,
+            self.ax.kAXDescriptionAttribute: description,
+            self.ax.kAXChildrenAttribute: list(children),
+        }
+
+    def _walk(self, window):
+        def copy(node, attribute):
+            self.calls += 1
+            if attribute == self.ax.kAXFocusedWindowAttribute:
+                return window
+            return node.get(attribute) if isinstance(node, dict) else None
+
+        with mock.patch.object(self.ax, "accessibility_trusted", return_value=True), \
+             mock.patch.object(self.ax, "AXUIElementCreateApplication", return_value={}), \
+             mock.patch.object(self.ax, "_copy", side_effect=copy):
+            return self.ax.address_bar(123)[0]
+
+    def _page(self, size):
+        return self._node(children=[self._node(role="AXStaticText") for _ in range(size)])
+
+    def test_an_unlabelled_bar_does_not_walk_the_whole_page(self):
+        # Zen: the bar is a combo box described only as "Search...".
+        bar = self._node(self.ax.kAXComboBoxRole, "github.com/x", "Search...")
+        window = self._node(children=[self._node(children=[bar]), self._page(350)])
+        self.assertEqual(self._walk(window), "https://github.com/x")
+        self.assertLess(self.calls, 200, "stopped near the toolbar, not at MAX_NODES")
+
+    def test_a_labelled_bar_just_below_still_wins(self):
+        decoy = self._node(self.ax.kAXTextFieldRole, "example.com")
+        bar = self._node(self.ax.kAXTextFieldRole, "https://github.com/y", "Enter address")
+        window = self._node(children=[decoy, self._node(children=[bar])])
+        self.assertEqual(self._walk(window), "https://github.com/y")
+
+
 class EntryPointTest(unittest.TestCase):
     def test_config_flag_reaches_the_shell(self):
         # The lock and the nudge signals live beside the config, so the shell

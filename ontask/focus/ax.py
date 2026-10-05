@@ -17,6 +17,7 @@ Needs Accessibility permission, the same grant the global hotkeys use.
 from __future__ import annotations
 
 import re
+from collections import deque
 
 from ApplicationServices import (
     AXIsProcessTrusted,
@@ -41,6 +42,9 @@ _DOMAIN = re.compile(r"^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?(/.*)?$", re.IGNORECASE)
 # The tree is wide; these bounds keep a poll cheap even if the walk finds nothing.
 MAX_NODES = 400
 MAX_DEPTH = 12
+# Once a URL-shaped field is found, how much further to look for a field that
+# names itself the address bar before settling for the first one.
+EXTRA_NODES_AFTER_FALLBACK = 40
 
 # Roles the address bar turns up as: a text field in Firefox, a combo box in Zen.
 URL_BAR_ROLES = (kAXTextFieldRole, kAXComboBoxRole)
@@ -156,18 +160,28 @@ def address_bar(pid: int) -> tuple[str, str]:
     # reached long before the bounds below matter. A self-described address bar
     # wins outright; otherwise the shallowest URL-shaped value is kept, which is
     # the toolbar rather than anything down in the page.
-    fallback = ""
-    queue = [(window, 0)]
+    #
+    # Once that fallback exists, the search only looks a little further - one
+    # level down, and a handful of nodes - for a self-described bar. Zen's bar
+    # never describes itself, and walking on to MAX_NODES for it meant hundreds
+    # of cross-process calls on every poll.
+    fallback, fallback_depth, fallback_at = "", 0, 0
+    queue = deque([(window, 0)])
     visited = 0
     while queue and visited < MAX_NODES:
-        node, depth = queue.pop(0)
+        node, depth = queue.popleft()
+        if fallback and (
+            depth > fallback_depth + 1 or visited - fallback_at >= EXTRA_NODES_AFTER_FALLBACK
+        ):
+            break
         visited += 1
         if _copy(node, kAXRoleAttribute) in URL_BAR_ROLES:
             url = normalise_url(_copy(node, kAXValueAttribute))
             if url:
                 if _looks_like_the_url_bar(node):
                     return url, title
-                fallback = fallback or url
+                if not fallback:
+                    fallback, fallback_depth, fallback_at = url, depth, visited
         if depth < MAX_DEPTH:
             for child in _copy(node, kAXChildrenAttribute) or []:
                 queue.append((child, depth + 1))
