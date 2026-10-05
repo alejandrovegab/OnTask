@@ -401,6 +401,29 @@ class AddressBarWalkTest(unittest.TestCase):
         self.assertEqual(self._walk(window), "https://github.com/y")
 
 
+class ProviderSelectionTest(unittest.TestCase):
+    def _provider_on(self, platform):
+        from ontask.focus import get_provider
+
+        with mock.patch.object(sys, "platform", platform):
+            return type(get_provider()).__name__
+
+    def test_each_platform_gets_its_own_provider(self):
+        self.assertEqual(self._provider_on("win32"), "WindowsFocusProvider")
+        self.assertEqual(self._provider_on("linux"), "X11FocusProvider")
+
+    def test_a_provider_that_cannot_load_stays_quiet(self):
+        from ontask.focus import NullFocusProvider, get_provider
+
+        with (
+            mock.patch.object(sys, "platform", "linux"),
+            mock.patch("ontask.platform.linux.focus.X11FocusProvider", side_effect=OSError),
+        ):
+            provider = get_provider()
+        self.assertIsInstance(provider, NullFocusProvider)
+        self.assertTrue(provider.current().is_unknown)
+
+
 class EntryPointTest(unittest.TestCase):
     def test_config_flag_reaches_the_shell(self):
         # The lock and the nudge signals live beside the config, so the shell
