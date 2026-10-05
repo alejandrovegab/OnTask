@@ -119,7 +119,12 @@ class Stats:
         self, kind: str, yes: bool, ignored: bool, key: str, label: str, profile: str
     ) -> None:
         self.record(
-            ANSWER, kind=kind, yes=bool(yes), ignored=bool(ignored), key=key, label=label,
+            ANSWER,
+            kind=kind,
+            yes=bool(yes),
+            ignored=bool(ignored),
+            key=key,
+            label=label,
             profile=profile,
         )
 
@@ -128,8 +133,12 @@ class Stats:
     ) -> None:
         if seconds >= 1.0:
             self.record(
-                OFF_TASK, key=key, label=label, seconds=round(float(seconds), 1),
-                blocked=bool(blocked), profile=profile,
+                OFF_TASK,
+                key=key,
+                label=label,
+                seconds=round(float(seconds), 1),
+                blocked=bool(blocked),
+                profile=profile,
             )
 
     def record_recovered(self, key: str, label: str, profile: str) -> None:

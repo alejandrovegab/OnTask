@@ -81,9 +81,9 @@ class SettingsWindow:
 
         right = ttk.Frame(tab)
         right.pack(side="left", fill="both", expand=True)
-        ttk.Label(right, text="Approved apps and sites (no reminders beyond the normal cadence)").pack(
-            anchor="w"
-        )
+        ttk.Label(
+            right, text="Approved apps and sites (no reminders beyond the normal cadence)"
+        ).pack(anchor="w")
         self.approved_text = tk.Text(right, height=9, wrap="none", undo=True)
         self.approved_text.pack(fill="both", expand=True, pady=(4, 10))
         ttk.Label(right, text="Blocked apps and sites (reminds after the short fuse below)").pack(
@@ -101,8 +101,12 @@ class SettingsWindow:
         ladder_box.pack(fill="x")
         self.intervals_var = tk.StringVar()
         self.advance_var = tk.StringVar()
-        self._row(ladder_box, 0, "Intervals (minutes, comma separated)", self.intervals_var, width=40)
-        self._row(ladder_box, 1, "Yes answers needed to advance each rung", self.advance_var, width=40)
+        self._row(
+            ladder_box, 0, "Intervals (minutes, comma separated)", self.intervals_var, width=40
+        )
+        self._row(
+            ladder_box, 1, "Yes answers needed to advance each rung", self.advance_var, width=40
+        )
         self.ladder_preview = ttk.Label(ladder_box, text="", foreground="#444", justify="left")
         self.ladder_preview.grid(row=2, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.intervals_var.trace_add("write", lambda *_: self._update_preview())
@@ -114,8 +118,15 @@ class SettingsWindow:
         self.blocked_var = tk.StringVar()
         self.suggest_var = tk.StringVar()
         self._row(timing_box, 0, "Remind after this long off task (seconds)", self.distraction_var)
-        self._row(timing_box, 1, "Remind after this long on a blocked app (seconds)", self.blocked_var)
-        self._row(timing_box, 2, "Offer to approve after this many yes answers (0 disables)", self.suggest_var)
+        self._row(
+            timing_box, 1, "Remind after this long on a blocked app (seconds)", self.blocked_var
+        )
+        self._row(
+            timing_box,
+            2,
+            "Offer to approve after this many yes answers (0 disables)",
+            self.suggest_var,
+        )
 
         penalty_box = ttk.LabelFrame(tab, text="When you answer No", padding=10)
         penalty_box.pack(fill="x", pady=(12, 0))
@@ -143,9 +154,14 @@ class SettingsWindow:
             foreground="#666",
             justify="left",
         )
-        self.penalty_explain.grid(row=2, column=0, columnspan=2, sticky="w", padx=(36, 0), pady=(2, 4))
+        self.penalty_explain.grid(
+            row=2, column=0, columnspan=2, sticky="w", padx=(36, 0), pady=(2, 4)
+        )
         self.penalty_approved_label, self.penalty_approved_entry = self._row(
-            penalty_box, 3, "On an approved app or site, take off (seconds)", self.penalty_approved_var
+            penalty_box,
+            3,
+            "On an approved app or site, take off (seconds)",
+            self.penalty_approved_var,
         )
         self.penalty_fixed_label, self.penalty_fixed_entry = self._row(
             penalty_box, 4, "Take off the same amount every time (seconds)", self.penalty_fixed_var
@@ -196,19 +212,19 @@ class SettingsWindow:
         self.start_var = tk.BooleanVar()
         self.sound_var = tk.BooleanVar()
         self.menubar_var = tk.BooleanVar()
-        ttk.Checkbutton(box, text="Start a session as soon as OnTask launches", variable=self.start_var).grid(
-            row=2, column=0, columnspan=2, sticky="w", pady=2
-        )
-        ttk.Checkbutton(box, text="Play a sound when a check-in appears", variable=self.sound_var).grid(
-            row=3, column=0, columnspan=2, sticky="w", pady=2
-        )
+        ttk.Checkbutton(
+            box, text="Start a session as soon as OnTask launches", variable=self.start_var
+        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=2)
+        ttk.Checkbutton(
+            box, text="Play a sound when a check-in appears", variable=self.sound_var
+        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=2)
         self.answer_sound_var = tk.BooleanVar()
         ttk.Checkbutton(
             box, text="Play a sound when you answer", variable=self.answer_sound_var
         ).grid(row=4, column=0, columnspan=2, sticky="w", pady=2)
-        ttk.Checkbutton(box, text="Show elapsed time in the menu bar", variable=self.menubar_var).grid(
-            row=6, column=0, columnspan=2, sticky="w", pady=2
-        )
+        ttk.Checkbutton(
+            box, text="Show elapsed time in the menu bar", variable=self.menubar_var
+        ).grid(row=6, column=0, columnspan=2, sticky="w", pady=2)
         self.position_var = tk.StringVar()
         ttk.Label(box, text="Check-in window position").grid(row=7, column=0, sticky="w", pady=3)
         ttk.Combobox(
@@ -276,7 +292,11 @@ class SettingsWindow:
             self.profile_list.insert("end", profile.name)
         self.current_profile = None
         if cfg.profiles:
-            index = max(0, cfg.profile_names().index(cfg.active_profile)) if cfg.active_profile in cfg.profile_names() else 0
+            index = (
+                max(0, cfg.profile_names().index(cfg.active_profile))
+                if cfg.active_profile in cfg.profile_names()
+                else 0
+            )
             self.profile_list.selection_set(index)
             self._show_profile(cfg.profiles[index].name)
 
@@ -350,7 +370,9 @@ class SettingsWindow:
                 need = advance[rung] if rung < len(advance) else (advance[-1] if advance else 1)
                 parts.append(f" --{need} yes--> ")
         preview = "".join(parts)
-        note = "" if len(advance) == max(0, len(intervals) - 1) else "  (list will be resized on save)"
+        note = (
+            "" if len(advance) == max(0, len(intervals) - 1) else "  (list will be resized on save)"
+        )
         self.ladder_preview.config(text=preview + note, foreground="#444")
 
     # -- buttons ----------------------------------------------------------
@@ -418,7 +440,9 @@ class SettingsWindow:
         self._flash("Reverted to the saved settings.")
 
     def restore_defaults(self) -> None:
-        if not messagebox.askyesno("OnTask", "Replace all settings, including profiles, with the defaults?"):
+        if not messagebox.askyesno(
+            "OnTask", "Replace all settings, including profiles, with the defaults?"
+        ):
             return
         path = self.config.path
         self.config = Config()
@@ -449,7 +473,9 @@ class SettingsWindow:
         if sorted(intervals) != intervals:
             raise ValueError("Intervals must increase from left to right.")
         reminder.intervals_minutes = intervals
-        reminder.advance_after_yes = [int(v) for v in _numbers(self.advance_var.get(), "Advance counts")]
+        reminder.advance_after_yes = [
+            int(v) for v in _numbers(self.advance_var.get(), "Advance counts")
+        ]
         reminder.distraction_grace_seconds = _number(self.distraction_var.get(), "Off-task seconds")
         reminder.disapproved_grace_seconds = _number(self.blocked_var.get(), "Blocked app seconds")
         reminder.suggest_approve_after_yes = int(_number(self.suggest_var.get(), "Yes answers"))

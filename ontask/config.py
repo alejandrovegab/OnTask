@@ -214,8 +214,12 @@ class ReminderSettings:
         d = d or {}
         base = cls()
         return cls(
-            intervals_minutes=[float(x) for x in _get(d, "intervals_minutes", base.intervals_minutes)],
-            advance_after_yes=[int(x) for x in _get(d, "advance_after_yes", base.advance_after_yes)],
+            intervals_minutes=[
+                float(x) for x in _get(d, "intervals_minutes", base.intervals_minutes)
+            ],
+            advance_after_yes=[
+                int(x) for x in _get(d, "advance_after_yes", base.advance_after_yes)
+            ],
             distraction_grace_seconds=float(
                 _get(d, "distraction_grace_seconds", base.distraction_grace_seconds)
             ),
@@ -371,7 +375,12 @@ def default_profiles() -> list[Profile]:
                 "site:stackoverflow.com",
                 "site:docs.python.org",
             ],
-            disapproved=["site:youtube.com", "site:reddit.com", "site:x.com", "site:news.ycombinator.com"],
+            disapproved=[
+                "site:youtube.com",
+                "site:reddit.com",
+                "site:x.com",
+                "site:news.ycombinator.com",
+            ],
         ),
         Profile(
             name="Writing",

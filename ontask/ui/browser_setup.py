@@ -56,7 +56,9 @@ class BrowserList(ttk.Frame):
         self._body.pack(fill="both", expand=True)
         controls = ttk.Frame(self)
         controls.pack(fill="x", pady=(8, 0))
-        ttk.Button(controls, text="Add from Finder...", command=self.add_from_finder).pack(side="left")
+        ttk.Button(controls, text="Add from Finder...", command=self.add_from_finder).pack(
+            side="left"
+        )
         self.hint = ttk.Label(controls, text="", foreground="#666")
         self.hint.pack(side="left", padx=(10, 0))
         self.set_browsers(browsers or [])

@@ -24,14 +24,20 @@ from ontask.matching import APPROVED, DISAPPROVED, UNAPPROVED, Rule, classify
 
 APPROVED_APP = FocusTarget(app_name="Code", bundle_id="com.microsoft.VSCode")
 UNLISTED_APP = FocusTarget(app_name="Messages", bundle_id="com.apple.MobileSMS")
-BLOCKED_SITE = FocusTarget(app_name="Safari", bundle_id="com.apple.Safari", url="https://www.youtube.com/watch?v=x")
-OTHER_UNLISTED = FocusTarget(app_name="Safari", bundle_id="com.apple.Safari", url="https://example.com/a")
+BLOCKED_SITE = FocusTarget(
+    app_name="Safari", bundle_id="com.apple.Safari", url="https://www.youtube.com/watch?v=x"
+)
+OTHER_UNLISTED = FocusTarget(
+    app_name="Safari", bundle_id="com.apple.Safari", url="https://example.com/a"
+)
 
 
 def make_config() -> Config:
     cfg = Config()
     cfg.profiles = [
-        Profile(name="Test", approved=["app:Code", "site:github.com"], disapproved=["site:youtube.com"])
+        Profile(
+            name="Test", approved=["app:Code", "site:github.com"], disapproved=["site:youtube.com"]
+        )
     ]
     cfg.active_profile = "Test"
     cfg.normalize()
@@ -191,7 +197,7 @@ class DistractionTest(unittest.TestCase):
 
     def test_cadence_timer_freezes_while_distracted(self):
         h = Harness()
-        h.run(120, APPROVED_APP)          # 60s left on the 3 min cadence
+        h.run(120, APPROVED_APP)  # 60s left on the 3 min cadence
         h.run(600, UNLISTED_APP, answer=True)  # ten minutes off task
         remaining_before = h.engine.cadence_remaining
         self.assertAlmostEqual(remaining_before, 60, delta=4)

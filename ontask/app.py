@@ -135,13 +135,20 @@ class Controller:
                 self.shell.ask_add_rule(event.target, event.rule, self)
             elif isinstance(event, eng.Answered):
                 self.stats.record_answer(
-                    event.kind, event.yes, event.ignored, event.target_key,
-                    event.target_label, self.config.active_profile,
+                    event.kind,
+                    event.yes,
+                    event.ignored,
+                    event.target_key,
+                    event.target_label,
+                    self.config.active_profile,
                 )
                 self._announce(event)
             elif isinstance(event, eng.OffTaskLogged):
                 self.stats.record_off_task(
-                    event.key, event.label, event.seconds, event.blocked,
+                    event.key,
+                    event.label,
+                    event.seconds,
+                    event.blocked,
                     self.config.active_profile,
                 )
             elif isinstance(event, eng.Recovered):

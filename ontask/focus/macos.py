@@ -37,21 +37,21 @@ from ..browsers import (
 )
 from . import FocusProvider, FocusTarget
 
-_SAFARI_SCRIPT = '''
+_SAFARI_SCRIPT = """
 tell application id "{bundle}"
     if (count of windows) is 0 then return ""
     set d to front document
     return (URL of d) & linefeed & (name of d)
 end tell
-'''
+"""
 
-_CHROMIUM_SCRIPT = '''
+_CHROMIUM_SCRIPT = """
 tell application id "{bundle}"
     if (count of windows) is 0 then return ""
     set t to active tab of front window
     return (URL of t) & linefeed & (title of t)
 end tell
-'''
+"""
 
 CACHE_SECONDS = 0.75
 
@@ -85,7 +85,11 @@ class MacFocusProvider(FocusProvider):
         bundle = str(app.bundleIdentifier() or "")
         enabled = browsers if browsers is not None else default_browsers()
         browser = self._match(name, bundle, enabled)
-        if browser is None or browser.flavour == UNSUPPORTED or browser.name in self.blocked_browsers:
+        if (
+            browser is None
+            or browser.flavour == UNSUPPORTED
+            or browser.name in self.blocked_browsers
+        ):
             return FocusTarget(app_name=name, bundle_id=bundle)
         try:
             pid = int(app.processIdentifier())
@@ -131,7 +135,9 @@ class MacFocusProvider(FocusProvider):
                 return result
         return "", ""
 
-    def _run_script(self, browser: Browser, dialect: str, target: str) -> tuple[bool, tuple[str, str]]:
+    def _run_script(
+        self, browser: Browser, dialect: str, target: str
+    ) -> tuple[bool, tuple[str, str]]:
         """Run one dialect. Returns (the app was reachable, (url, title))."""
         try:
             proc = subprocess.run(

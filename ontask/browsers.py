@@ -201,7 +201,9 @@ def _read_info_plist(app: Path) -> dict[str, Any]:
         with info.open("rb") as handle:
             data = plistlib.load(handle)
     except FileNotFoundError:
-        raise BrowserError(f"{app.name} has no Contents/Info.plist, so it is not an app bundle.") from None
+        raise BrowserError(
+            f"{app.name} has no Contents/Info.plist, so it is not an app bundle."
+        ) from None
     except (OSError, plistlib.InvalidFileException, ValueError) as exc:
         raise BrowserError(f"Could not read the Info.plist inside {app.name}: {exc}") from None
     return data if isinstance(data, dict) else {}
@@ -227,9 +229,7 @@ def _is_chromium(app: Path) -> bool:
     """
     frameworks = app / "Contents" / "Frameworks"
     try:
-        return any(
-            child.name.endswith(" Framework.framework") for child in frameworks.iterdir()
-        )
+        return any(child.name.endswith(" Framework.framework") for child in frameworks.iterdir())
     except OSError:
         return False
 
@@ -280,9 +280,10 @@ def inspect_app(path: str | Path) -> Browser:
             f"{app.name} declares no bundle identifier, so OnTask has no reliable way to "
             "recognise it when it is in front."
         )
-    name = str(
-        info.get("CFBundleDisplayName") or info.get("CFBundleName") or app.stem
-    ).strip() or app.stem
+    name = (
+        str(info.get("CFBundleDisplayName") or info.get("CFBundleName") or app.stem).strip()
+        or app.stem
+    )
     return Browser(
         name=name,
         bundle_id=bundle_id,
@@ -302,7 +303,9 @@ def coerce(entry: Any) -> Browser | None:
         bundle_id = LEGACY_NAMES.get(name)
         if not bundle_id:
             return None
-        return Browser(name=name, bundle_id=bundle_id, flavour=KNOWN_FLAVOURS.get(bundle_id, UNSUPPORTED))
+        return Browser(
+            name=name, bundle_id=bundle_id, flavour=KNOWN_FLAVOURS.get(bundle_id, UNSUPPORTED)
+        )
     return None
 
 
@@ -337,9 +340,7 @@ def installed_browsers() -> list[Browser]:
         return []
     try:
         workspace = NSWorkspace.sharedWorkspace()
-        urls = workspace.URLsForApplicationsToOpenURL_(
-            NSURL.URLWithString_("https://example.com")
-        )
+        urls = workspace.URLsForApplicationsToOpenURL_(NSURL.URLWithString_("https://example.com"))
     except Exception:
         return []
     found: dict[str, Browser] = {}

@@ -193,7 +193,6 @@ class SettingsWindowTest(unittest.TestCase):
         self.assertEqual(Config.load(self.path).general.prompt_position, "bottom_right")
 
 
-
 @unittest.skipUnless(HAVE_TK, "no Tk display")
 class FirstRunWindowTest(unittest.TestCase):
     def setUp(self):
@@ -241,6 +240,7 @@ class FirstRunWindowTest(unittest.TestCase):
         self.assertIn("app:Figma", saved.profile().approved)
         self.assertTrue(saved.setup_complete)
         self.assertEqual([b.bundle_id for b in saved.general.browsers], ["com.apple.Safari"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
