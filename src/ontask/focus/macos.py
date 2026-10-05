@@ -26,7 +26,7 @@ import time
 
 from AppKit import NSWorkspace
 
-from ..browsers import (
+from ..core.browsers import (
     ACCESSIBILITY,
     APPLESCRIPT,
     CHROMIUM,

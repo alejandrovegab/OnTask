@@ -13,12 +13,12 @@ import sys
 import time
 from pathlib import Path
 
-from . import engine as eng
 from . import ipc
-from .config import Config, Profile
-from .engine import Engine, format_duration
+from .core import engine as eng
+from .core.config import Config, Profile
+from .core.engine import Engine, format_duration
+from .core.matching import classify, suggest_rule
 from .focus import UNKNOWN, FocusTarget, get_provider
-from .matching import classify, suggest_rule
 from .stats import Stats, default_stats_path
 
 

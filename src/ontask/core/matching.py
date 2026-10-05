@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from fnmatch import fnmatch
 
-from .focus import FocusTarget
+from ..focus import FocusTarget
 
 APPROVED = "approved"
 DISAPPROVED = "disapproved"

@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from . import FocusProvider, FocusTarget
 
 if TYPE_CHECKING:
-    from ..browsers import Browser
+    from ..core.browsers import Browser
 
 
 class FallbackFocusProvider(FocusProvider):

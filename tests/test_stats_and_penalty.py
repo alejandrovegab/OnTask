@@ -11,8 +11,8 @@ from pathlib import Path
 from unittest import mock
 
 from ontask import ipc
-from ontask.config import ClockPenalty, Config, Profile
-from ontask.engine import (
+from ontask.core.config import ClockPenalty, Config, Profile
+from ontask.core.engine import (
     BLOCKED,
     CADENCE,
     DISTRACTION,

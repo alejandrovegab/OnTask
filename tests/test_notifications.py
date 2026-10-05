@@ -147,7 +147,7 @@ class PromptRoutingTest(unittest.TestCase):
     """How prompt_ui resolves against what can actually be delivered."""
 
     def setUp(self):
-        from ontask.config import Config
+        from ontask.core.config import Config
         from ontask.ui.menubar_macos import OnTaskApp
 
         self.tmp = tempfile.TemporaryDirectory()
@@ -174,7 +174,7 @@ class PromptRoutingTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def _prompt(self):
-        from ontask.engine import CADENCE, ActivePrompt
+        from ontask.core.engine import CADENCE, ActivePrompt
         from ontask.focus import FocusTarget
 
         return ActivePrompt(kind=CADENCE, target=FocusTarget(app_name="Code"), opened_at=0.0)

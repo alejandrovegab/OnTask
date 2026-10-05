@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
-    from ..browsers import Browser
+    from ..core.browsers import Browser
 
 
 @dataclass(frozen=True)

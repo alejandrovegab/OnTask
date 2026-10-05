@@ -15,7 +15,7 @@ import rumps
 from Foundation import NSObject
 
 from ..app import Controller
-from ..engine import IDLE, PAUSED, RUNNING, ActivePrompt, format_duration
+from ..core.engine import IDLE, PAUSED, RUNNING, ActivePrompt, format_duration
 from ..hotkeys import HotkeyManager
 from .notify_macos import NOT_DETERMINED, Notifier
 from .prompt_macos import PromptWindow

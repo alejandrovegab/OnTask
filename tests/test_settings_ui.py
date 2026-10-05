@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ontask.browsers import ACCESSIBILITY, APPLESCRIPT, Browser
-from ontask.config import Config
+from ontask.core.browsers import ACCESSIBILITY, APPLESCRIPT, Browser
+from ontask.core.config import Config
 
 try:
     import tkinter as tk

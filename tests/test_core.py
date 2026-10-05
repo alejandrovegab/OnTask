@@ -3,8 +3,8 @@
 import unittest
 from pathlib import Path
 
-from ontask.config import Config, Profile
-from ontask.engine import (
+from ontask.core.config import Config, Profile
+from ontask.core.engine import (
     BLOCKED,
     CADENCE,
     DISTRACTION,
@@ -15,9 +15,9 @@ from ontask.engine import (
     SuggestApprove,
     format_duration,
 )
+from ontask.core.ladder import Ladder
+from ontask.core.matching import APPROVED, DISAPPROVED, UNAPPROVED, Rule, classify
 from ontask.focus import FocusTarget
-from ontask.ladder import Ladder
-from ontask.matching import APPROVED, DISAPPROVED, UNAPPROVED, Rule, classify
 
 APPROVED_APP = FocusTarget(app_name="Code", bundle_id="com.microsoft.VSCode")
 UNLISTED_APP = FocusTarget(app_name="Messages", bundle_id="com.apple.MobileSMS")

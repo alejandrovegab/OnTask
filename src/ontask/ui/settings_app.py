@@ -17,7 +17,7 @@ from tkinter import messagebox, ttk
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from ontask import ipc  # noqa: E402
-from ontask.config import ClockPenalty, Config, NoResponse, Profile  # noqa: E402
+from ontask.core.config import ClockPenalty, Config, NoResponse, Profile  # noqa: E402
 from ontask.ui.browser_setup import BrowserList  # noqa: E402
 from ontask.ui.tk_window import bring_to_front, watch_raise  # noqa: E402
 

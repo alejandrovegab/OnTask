@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from ontask.browsers import (
+from ontask.core.browsers import (
     ACCESSIBILITY,
     APPLESCRIPT,
     CHROMIUM,
@@ -319,7 +319,7 @@ class MenuBarTest(unittest.TestCase):
     """Builds the whole menu without starting the run loop."""
 
     def test_menu_builds_and_refreshes(self):
-        from ontask.config import Config
+        from ontask.core.config import Config
         from ontask.ui.menubar_macos import OnTaskApp
 
         with tempfile.TemporaryDirectory() as tmp:
