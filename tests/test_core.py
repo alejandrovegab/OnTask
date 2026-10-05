@@ -171,7 +171,7 @@ class DistractionTest(unittest.TestCase):
         h = Harness()
         ev, waited = h.run_until_prompt(UNLISTED_APP)
         self.assertEqual(ev.prompt.kind, DISTRACTION)
-        self.assertAlmostEqual(waited, 150, delta=3)
+        self.assertAlmostEqual(waited, 60, delta=3)
 
     def test_blocked_site_prompts_after_ten_seconds(self):
         h = Harness()
@@ -200,17 +200,17 @@ class DistractionTest(unittest.TestCase):
 
     def test_distraction_accumulates_across_unlisted_apps(self):
         h = Harness()
-        h.run(100, UNLISTED_APP)
+        h.run(40, UNLISTED_APP)
         ev, waited = h.run_until_prompt(OTHER_UNLISTED)
         self.assertEqual(ev.prompt.kind, DISTRACTION)
-        self.assertAlmostEqual(waited, 50, delta=4)
+        self.assertAlmostEqual(waited, 20, delta=4)
 
     def test_returning_to_approved_clears_distraction(self):
         h = Harness()
-        h.run(120, UNLISTED_APP)
+        h.run(50, UNLISTED_APP)
         h.run(10, APPROVED_APP)
         _, waited = h.run_until_prompt(UNLISTED_APP)
-        self.assertAlmostEqual(waited, 150, delta=4)
+        self.assertAlmostEqual(waited, 60, delta=4)
 
     def test_no_while_distracted_resets_ladder(self):
         h = Harness()
@@ -372,6 +372,36 @@ class ConfigTest(unittest.TestCase):
             loaded = Config.load(path)
             self.assertEqual(loaded.reminder.intervals_minutes, [1, 2, 3])
             self.assertEqual(loaded.active_profile, "Test")
+
+
+class ConfigMigrationTest(unittest.TestCase):
+    def test_new_configs_check_in_after_a_minute_off_task(self):
+        self.assertEqual(Config().reminder.distraction_grace_seconds, 60)
+
+    def test_an_untouched_old_default_moves_to_the_new_one(self):
+        cfg = Config.from_dict({"version": 1, "reminder": {"distraction_grace_seconds": 150}})
+        self.assertEqual(cfg.reminder.distraction_grace_seconds, 60)
+        self.assertEqual(cfg.version, 2)
+
+    def test_a_chosen_value_survives_the_migration(self):
+        cfg = Config.from_dict({"version": 1, "reminder": {"distraction_grace_seconds": 90}})
+        self.assertEqual(cfg.reminder.distraction_grace_seconds, 90)
+
+    def test_choosing_150_after_the_migration_sticks(self):
+        cfg = Config.from_dict({"version": 2, "reminder": {"distraction_grace_seconds": 150}})
+        self.assertEqual(cfg.reminder.distraction_grace_seconds, 150)
+
+    def test_the_migration_is_written_back_once(self):
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.json"
+            path.write_text(json.dumps({"reminder": {"distraction_grace_seconds": 150}}))
+            Config.load(path)
+            saved = json.loads(path.read_text())
+            self.assertEqual(saved["version"], 2)
+            self.assertEqual(saved["reminder"]["distraction_grace_seconds"], 60)
 
 
 class ShellInterfaceTest(unittest.TestCase):
