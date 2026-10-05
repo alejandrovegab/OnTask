@@ -11,7 +11,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from ..app import Controller, Shell
-from ..engine import IDLE, PAUSED, RUNNING, ActivePrompt
+from ..engine import IDLE, PAUSED, ActivePrompt
 from ..hotkeys import HotkeyManager
 from .prompt_tk import TkPrompt
 
@@ -21,7 +21,8 @@ class TkShell(Shell):
         self.root = tk.Tk()
         self.root.title("OnTask")
         self.root.minsize(360, 190)
-        self.controller = Controller(shell=self, config_path=config_path)
+        # `shell` is OnTask's UI shell, not subprocess's shell flag.
+        self.controller = Controller(shell=self, config_path=config_path)  # nosec B604
         self.prompt = TkPrompt(self.root, self._on_answer)
         self.hotkeys = HotkeyManager(self.controller)
         self.status_var = tk.StringVar()
@@ -40,19 +41,30 @@ class TkShell(Shell):
         picker.pack(fill="x", pady=(12, 8))
         ttk.Label(picker, text="Profile").pack(side="left")
         self.profile_combo = ttk.Combobox(
-            picker, textvariable=self.profile_var, state="readonly",
-            values=self.controller.config.profile_names(), width=22,
+            picker,
+            textvariable=self.profile_var,
+            state="readonly",
+            values=self.controller.config.profile_names(),
+            width=22,
         )
         self.profile_combo.pack(side="left", padx=(8, 0))
-        self.profile_combo.bind("<<ComboboxSelected>>", lambda _e: self.controller.set_profile(self.profile_var.get()))
+        self.profile_combo.bind(
+            "<<ComboboxSelected>>", lambda _e: self.controller.set_profile(self.profile_var.get())
+        )
 
         buttons = ttk.Frame(frame)
         buttons.pack(fill="x")
-        self.toggle_button = ttk.Button(buttons, text="Start Session", command=self.controller.toggle_session)
+        self.toggle_button = ttk.Button(
+            buttons, text="Start Session", command=self.controller.toggle_session
+        )
         self.toggle_button.pack(side="left")
-        self.pause_button = ttk.Button(buttons, text="Pause", command=self.controller.pause_or_resume)
+        self.pause_button = ttk.Button(
+            buttons, text="Pause", command=self.controller.pause_or_resume
+        )
         self.pause_button.pack(side="left", padx=6)
-        ttk.Button(buttons, text="Settings...", command=self.controller.open_settings).pack(side="right")
+        ttk.Button(buttons, text="Settings...", command=self.controller.open_settings).pack(
+            side="right"
+        )
 
     def _schedule(self) -> None:
         interval = int(self.controller.config.general.poll_seconds * 1000)

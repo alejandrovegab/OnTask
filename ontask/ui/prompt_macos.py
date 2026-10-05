@@ -111,7 +111,8 @@ class PromptWindow:
         panel.setTitle_("OnTask")
         panel.setLevel_(NSStatusWindowLevel)
         panel.setCollectionBehavior_(
-            NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary
+            NSWindowCollectionBehaviorCanJoinAllSpaces
+            | NSWindowCollectionBehaviorFullScreenAuxiliary
         )
         panel.setHidesOnDeactivate_(False)
         panel.setBecomesKeyOnlyIfNeeded_(False)
@@ -171,9 +172,13 @@ class PromptWindow:
         self._title.setFrame_(NSMakeRect(PAD, title_y, text_width, title_height))
         self._subtitle.setFrame_(NSMakeRect(PAD, subtitle_y, text_width, subtitle_height))
         self._no.setFrame_(
-            NSMakeRect(WIDTH - PAD - BUTTON_WIDTH * 2 - BUTTON_GAP, PAD, BUTTON_WIDTH, BUTTON_HEIGHT)
+            NSMakeRect(
+                WIDTH - PAD - BUTTON_WIDTH * 2 - BUTTON_GAP, PAD, BUTTON_WIDTH, BUTTON_HEIGHT
+            )
         )
-        self._yes.setFrame_(NSMakeRect(WIDTH - PAD - BUTTON_WIDTH, PAD, BUTTON_WIDTH, BUTTON_HEIGHT))
+        self._yes.setFrame_(
+            NSMakeRect(WIDTH - PAD - BUTTON_WIDTH, PAD, BUTTON_WIDTH, BUTTON_HEIGHT)
+        )
 
     def _position(self, placement: str) -> None:
         screen = NSScreen.mainScreen()

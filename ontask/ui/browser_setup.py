@@ -24,6 +24,7 @@ from tkinter import filedialog, messagebox, ttk
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from ontask import ipc  # noqa: E402
 from ontask.browsers import (  # noqa: E402
     ACCESSIBILITY,
     UNSUPPORTED,
@@ -34,7 +35,6 @@ from ontask.browsers import (  # noqa: E402
 )
 from ontask.config import Config  # noqa: E402
 from ontask.ui.app_icons import icon_base64  # noqa: E402
-from ontask import ipc  # noqa: E402
 from ontask.ui.tk_window import bring_to_front, watch_raise  # noqa: E402
 
 ROUTE_NOTES = {
@@ -56,7 +56,9 @@ class BrowserList(ttk.Frame):
         self._body.pack(fill="both", expand=True)
         controls = ttk.Frame(self)
         controls.pack(fill="x", pady=(8, 0))
-        ttk.Button(controls, text="Add from Finder...", command=self.add_from_finder).pack(side="left")
+        ttk.Button(controls, text="Add from Finder...", command=self.add_from_finder).pack(
+            side="left"
+        )
         self.hint = ttk.Label(controls, text="", foreground="#666")
         self.hint.pack(side="left", padx=(10, 0))
         self.set_browsers(browsers or [])

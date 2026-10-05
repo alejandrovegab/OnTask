@@ -1,0 +1,21 @@
+# Opens pull requests when a dependency or a pinned GitHub Action has an
+# update. Security fixes arrive as soon as they are published; routine bumps
+# are batched weekly so they do not bury real work.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python-dependencies:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]

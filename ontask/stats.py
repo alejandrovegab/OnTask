@@ -19,10 +19,11 @@ import json
 import os
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 # Roughly a year of heavy use; trimmed oldest-first past this.
 MAX_EVENTS = 20000
@@ -56,7 +57,7 @@ class Stats:
     # -- persistence ------------------------------------------------------
 
     @classmethod
-    def load(cls, path: Path | None = None, clock: Callable[[], float] = time.time) -> "Stats":
+    def load(cls, path: Path | None = None, clock: Callable[[], float] = time.time) -> Stats:
         path = Path(path) if path else default_stats_path()
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
@@ -118,7 +119,12 @@ class Stats:
         self, kind: str, yes: bool, ignored: bool, key: str, label: str, profile: str
     ) -> None:
         self.record(
-            ANSWER, kind=kind, yes=bool(yes), ignored=bool(ignored), key=key, label=label,
+            ANSWER,
+            kind=kind,
+            yes=bool(yes),
+            ignored=bool(ignored),
+            key=key,
+            label=label,
             profile=profile,
         )
 
@@ -127,8 +133,12 @@ class Stats:
     ) -> None:
         if seconds >= 1.0:
             self.record(
-                OFF_TASK, key=key, label=label, seconds=round(float(seconds), 1),
-                blocked=bool(blocked), profile=profile,
+                OFF_TASK,
+                key=key,
+                label=label,
+                seconds=round(float(seconds), 1),
+                blocked=bool(blocked),
+                profile=profile,
             )
 
     def record_recovered(self, key: str, label: str, profile: str) -> None:
@@ -153,7 +163,7 @@ class Stats:
 
     # -- aggregation ------------------------------------------------------
 
-    def summary(self, since: float | None = None) -> "Summary":
+    def summary(self, since: float | None = None) -> Summary:
         events = self.events if since is None else [e for e in self.events if e["t"] >= since]
         return Summary.build(events)
 
@@ -179,7 +189,7 @@ class Summary:
     last_event: float = 0.0
 
     @classmethod
-    def build(cls, events: list[dict[str, Any]]) -> "Summary":
+    def build(cls, events: list[dict[str, Any]]) -> Summary:
         out = cls()
         by_profile: dict[str, float] = defaultdict(float)
         by_target: dict[str, float] = defaultdict(float)

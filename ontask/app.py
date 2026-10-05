@@ -25,7 +25,7 @@ from .stats import Stats, default_stats_path
 class Shell:
     """Callbacks a UI must provide. Defaults make it safe to implement partially."""
 
-    def show_prompt(self, prompt: eng.ActivePrompt, controller: "Controller") -> None: ...
+    def show_prompt(self, prompt: eng.ActivePrompt, controller: Controller) -> None: ...
 
     def realert(self, prompt: eng.ActivePrompt) -> None: ...
 
@@ -40,7 +40,7 @@ class Shell:
 
     def notify(self, title: str, message: str) -> None: ...
 
-    def ask_add_rule(self, target: FocusTarget, rule: str, controller: "Controller") -> None: ...
+    def ask_add_rule(self, target: FocusTarget, rule: str, controller: Controller) -> None: ...
 
     def refresh(self) -> None: ...
 
@@ -135,13 +135,20 @@ class Controller:
                 self.shell.ask_add_rule(event.target, event.rule, self)
             elif isinstance(event, eng.Answered):
                 self.stats.record_answer(
-                    event.kind, event.yes, event.ignored, event.target_key,
-                    event.target_label, self.config.active_profile,
+                    event.kind,
+                    event.yes,
+                    event.ignored,
+                    event.target_key,
+                    event.target_label,
+                    self.config.active_profile,
                 )
                 self._announce(event)
             elif isinstance(event, eng.OffTaskLogged):
                 self.stats.record_off_task(
-                    event.key, event.label, event.seconds, event.blocked,
+                    event.key,
+                    event.label,
+                    event.seconds,
+                    event.blocked,
                     self.config.active_profile,
                 )
             elif isinstance(event, eng.Recovered):

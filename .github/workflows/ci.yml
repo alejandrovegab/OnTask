@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Read-only by default; no job here needs to write to the repository.
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR makes the running checks moot.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint and security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install tools
+        run: python -m pip install "ruff>=0.15" "bandit[toml]>=1.8"
+      - name: Lint
+        run: ruff check --output-format github ontask tests
+      - name: Formatting
+        run: ruff format --check ontask tests
+      - name: Security scan
+        run: bandit -c pyproject.toml -r ontask --severity-level medium
+
+  test:
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+        python: ["3.14"]
+        include:
+          # The oldest Python pyproject.toml still claims to support.
+          - os: ubuntu-latest
+            python: "3.10"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        # The runner's Python ships its own pip and setuptools, which may be
+        # old enough for pip-audit to flag; bring them current first.
+        run: |
+          python -m pip install --upgrade pip setuptools
+          python -m pip install -e ".[dev]"
+      - name: Tests
+        if: runner.os != 'Linux'
+        run: python -m pytest -ra
+      - name: Tests (virtual display for the Tk windows)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a python -m pytest -ra
+      - name: Audit dependencies for known vulnerabilities
+        # Each OS installs a different dependency set, so each is audited.
+        run: pip-audit --progress-spinner off --skip-editable

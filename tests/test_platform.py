@@ -128,9 +128,7 @@ class BundleInspectionTest(unittest.TestCase):
         self.assertEqual(inspect_app(app).flavour, ACCESSIBILITY)
 
     def test_scriptable_browser_of_unknown_dialect_is_probed_later(self):
-        app = _fake_app(
-            self.root, "Comet", "com.example.comet", resources=("scripting.sdef",)
-        )
+        app = _fake_app(self.root, "Comet", "com.example.comet", resources=("scripting.sdef",))
         self.assertEqual(inspect_app(app).flavour, APPLESCRIPT)
 
     def test_known_bundle_ids_skip_detection(self):
@@ -181,7 +179,9 @@ class FocusTargetTest(unittest.TestCase):
 
     def test_key_distinguishes_sites_from_apps(self):
         self.assertEqual(FocusTarget(url="https://a.com/x").key(), "site:a.com")
-        self.assertEqual(FocusTarget(app_name="Slack", bundle_id="com.tinyspeck.x").key(), "app:com.tinyspeck.x")
+        self.assertEqual(
+            FocusTarget(app_name="Slack", bundle_id="com.tinyspeck.x").key(), "app:com.tinyspeck.x"
+        )
 
 
 @unittest.skipUnless(HAVE_PYOBJC, "PyObjC not installed")
@@ -215,7 +215,9 @@ class MacFocusProviderTest(unittest.TestCase):
         self.assertEqual(target.url, "")
 
     def test_browser_returns_url_and_title(self):
-        provider = self._provider("Safari", "com.apple.Safari", ("https://github.com/x\nGitHub\n", 0, ""))
+        provider = self._provider(
+            "Safari", "com.apple.Safari", ("https://github.com/x\nGitHub\n", 0, "")
+        )
         with mock.patch("subprocess.run", self._run):
             target = provider.current(default_browsers())
         self.assertEqual(target.url, "https://github.com/x")
@@ -240,9 +242,13 @@ class MacFocusProviderTest(unittest.TestCase):
 
     def test_gecko_reads_the_address_bar_instead_of_applescript(self):
         provider = self._provider("zen", "app.zen-browser.zen")
-        with mock.patch("subprocess.run", self._run), \
-             mock.patch("ontask.focus.ax.accessibility_trusted", return_value=True), \
-             mock.patch("ontask.focus.ax.address_bar", return_value=("https://github.com/x", "GitHub")):
+        with (
+            mock.patch("subprocess.run", self._run),
+            mock.patch("ontask.focus.ax.accessibility_trusted", return_value=True),
+            mock.patch(
+                "ontask.focus.ax.address_bar", return_value=("https://github.com/x", "GitHub")
+            ),
+        ):
             target = provider.current([ZEN])
         self._run.assert_not_called()  # never shells out to osascript
         self.assertEqual(target.host, "github.com")
@@ -259,8 +265,10 @@ class MacFocusProviderTest(unittest.TestCase):
 
     def test_accessibility_errors_do_not_propagate(self):
         provider = self._provider("zen", "app.zen-browser.zen")
-        with mock.patch("ontask.focus.ax.accessibility_trusted", return_value=True), \
-             mock.patch("ontask.focus.ax.address_bar", side_effect=RuntimeError("tree changed")):
+        with (
+            mock.patch("ontask.focus.ax.accessibility_trusted", return_value=True),
+            mock.patch("ontask.focus.ax.address_bar", side_effect=RuntimeError("tree changed")),
+        ):
             target = provider.current([ZEN])
         self.assertEqual(target.url, "")
         self.assertIn("tree changed", provider.last_error)
@@ -326,8 +334,10 @@ class MenuBarTest(unittest.TestCase):
             cfg.general.hotkeys.answer_yes = ""
             cfg.general.hotkeys.answer_no = ""
             cfg.save(path)
-            with mock.patch("ontask.app.Config.load", return_value=Config.load(path)), \
-                 mock.patch("rumps.Timer"):
+            with (
+                mock.patch("ontask.app.Config.load", return_value=Config.load(path)),
+                mock.patch("rumps.Timer"),
+            ):
                 app = OnTaskApp()
                 self.assertIsNone(app.controller._setup_proc, "no first-run window spawned")
                 app.refresh()
@@ -366,9 +376,11 @@ class AddressBarWalkTest(unittest.TestCase):
                 return window
             return node.get(attribute) if isinstance(node, dict) else None
 
-        with mock.patch.object(self.ax, "accessibility_trusted", return_value=True), \
-             mock.patch.object(self.ax, "AXUIElementCreateApplication", return_value={}), \
-             mock.patch.object(self.ax, "_copy", side_effect=copy):
+        with (
+            mock.patch.object(self.ax, "accessibility_trusted", return_value=True),
+            mock.patch.object(self.ax, "AXUIElementCreateApplication", return_value={}),
+            mock.patch.object(self.ax, "_copy", side_effect=copy),
+        ):
             return self.ax.address_bar(123)[0]
 
     def _page(self, size):
@@ -396,8 +408,10 @@ class EntryPointTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "alt" / "config.json"
-            with mock.patch.object(sys, "platform", "linux"), \
-                 mock.patch("ontask.ui.app_tk.run") as tk_run:
+            with (
+                mock.patch.object(sys, "platform", "linux"),
+                mock.patch("ontask.ui.app_tk.run") as tk_run,
+            ):
                 self.assertEqual(entry.main(["--config", str(path)]), 0)
             tk_run.assert_called_once_with(path)
 

@@ -9,7 +9,6 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from . import engine as eng
 from .app import Controller, Shell
 
 
@@ -31,7 +30,9 @@ class ConsoleShell(Shell):
 
 
 def run(config_path: str | None = None) -> int:
-    controller = Controller(shell=ConsoleShell(), config_path=Path(config_path) if config_path else None)
+    path = Path(config_path) if config_path else None
+    # `shell` is OnTask's UI shell, not subprocess's shell flag.
+    controller = Controller(shell=ConsoleShell(), config_path=path)  # nosec B604
     controller.start_session()
     print(f"Config: {controller.config.path}")
     print(f"Focus provider: {type(controller.focus).__name__}")

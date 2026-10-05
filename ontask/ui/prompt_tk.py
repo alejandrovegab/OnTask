@@ -24,11 +24,17 @@ class TkPrompt:
         window.protocol("WM_DELETE_WINDOW", lambda: None)  # must be answered
         frame = ttk.Frame(window, padding=20)
         frame.pack(fill="both", expand=True)
-        ttk.Label(frame, textvariable=self.title_var, font=("TkDefaultFont", 15, "bold")).pack(anchor="w")
-        ttk.Label(frame, textvariable=self.subtitle_var, foreground="#666").pack(anchor="w", pady=(4, 16))
+        ttk.Label(frame, textvariable=self.title_var, font=("TkDefaultFont", 15, "bold")).pack(
+            anchor="w"
+        )
+        ttk.Label(frame, textvariable=self.subtitle_var, foreground="#666").pack(
+            anchor="w", pady=(4, 16)
+        )
         buttons = ttk.Frame(frame)
         buttons.pack(anchor="e")
-        ttk.Button(buttons, text="No (N)", command=lambda: self.on_answer(False)).pack(side="left", padx=6)
+        ttk.Button(buttons, text="No (N)", command=lambda: self.on_answer(False)).pack(
+            side="left", padx=6
+        )
         yes = ttk.Button(buttons, text="Yes (Y)", command=lambda: self.on_answer(True))
         yes.pack(side="left")
         for key in ("y", "Y"):

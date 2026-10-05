@@ -55,7 +55,8 @@ class _Waker(NSObject):
 class OnTaskApp(rumps.App):
     def __init__(self, config_path: Path | None = None) -> None:
         super().__init__("OnTask", title="OnTask", quit_button=None)
-        self.controller = Controller(shell=self, config_path=config_path)
+        # `shell` is OnTask's UI shell, not subprocess's shell flag.
+        self.controller = Controller(shell=self, config_path=config_path)  # nosec B604
         self.prompt = PromptWindow(self._on_answer)
         self.notifier = Notifier(self._on_answer)
         self.hotkeys = HotkeyManager(self.controller)
@@ -199,22 +200,32 @@ class OnTaskApp(rumps.App):
         general = controller.config.general
         mode = self._effective_mode(general.prompt_ui)
         if mode in ("notification", "both"):
-            self.notifier.show("OnTask", prompt.question(), actionable=True, sound=general.play_sound)
+            self.notifier.show(
+                "OnTask", prompt.question(), actionable=True, sound=general.play_sound
+            )
         else:
             self.prompt.show(
-                prompt.question(), self._subtitle(prompt), general.play_sound, general.prompt_position
+                prompt.question(),
+                self._subtitle(prompt),
+                general.play_sound,
+                general.prompt_position,
             )
 
     def realert(self, prompt: ActivePrompt) -> None:
         general = self.controller.config.general
         mode = self._effective_mode(general.prompt_ui)
         if mode == "notification":
-            self.notifier.show("OnTask", prompt.question(), actionable=True, sound=general.play_sound)
+            self.notifier.show(
+                "OnTask", prompt.question(), actionable=True, sound=general.play_sound
+            )
             return
         # "both" deliberately escalates: banner first, then the window.
         if not self.prompt.visible:
             self.prompt.show(
-                prompt.question(), self._subtitle(prompt), general.play_sound, general.prompt_position
+                prompt.question(),
+                self._subtitle(prompt),
+                general.play_sound,
+                general.prompt_position,
             )
         else:
             self.prompt.realert(self._subtitle(prompt), general.play_sound, general.prompt_position)
@@ -249,7 +260,9 @@ class OnTaskApp(rumps.App):
         snap = self.controller.snapshot()
         general = self.controller.config.general
         if general.show_elapsed_in_menu_bar and snap.phase != IDLE:
-            self.title = f"{'*' if snap.phase == RUNNING else '||'} {format_duration(snap.elapsed_seconds)}"
+            self.title = (
+                f"{'*' if snap.phase == RUNNING else '||'} {format_duration(snap.elapsed_seconds)}"
+            )
         else:
             self.title = "OnTask"
 

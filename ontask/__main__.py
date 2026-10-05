@@ -1,8 +1,8 @@
 """Entry point: pick the best shell for this platform.
 
-    python -m ontask                 run the app
-    python -m ontask --settings      open the settings window only
-    python -m ontask --headless      run with no UI (useful for checking focus detection)
+python -m ontask                 run the app
+python -m ontask --settings      open the settings window only
+python -m ontask --headless      run with no UI (useful for checking focus detection)
 """
 
 from __future__ import annotations
@@ -15,7 +15,9 @@ from pathlib import Path
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ontask", description="Periodic on-task check-ins.")
     parser.add_argument("--settings", action="store_true", help="open the settings window and exit")
-    parser.add_argument("--headless", action="store_true", help="run without a UI, logging to stdout")
+    parser.add_argument(
+        "--headless", action="store_true", help="run without a UI, logging to stdout"
+    )
     parser.add_argument("--config", help="path to config.json")
     args = parser.parse_args(argv)
 

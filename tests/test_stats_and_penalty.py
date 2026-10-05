@@ -4,13 +4,12 @@ Timing runs on the same fake clock as test_core, so these are instant and do
 not depend on the machine's real time.
 """
 
-import json
 import os
 import sys
 import tempfile
 import unittest
-from unittest import mock
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -31,14 +30,20 @@ from ontask.stats import MAX_EVENTS, Stats, Summary, format_span
 
 APPROVED_APP = FocusTarget(app_name="Code", bundle_id="com.microsoft.VSCode")
 UNLISTED_APP = FocusTarget(app_name="Messages", bundle_id="com.apple.MobileSMS")
-OTHER_UNLISTED = FocusTarget(app_name="Safari", bundle_id="com.apple.Safari", url="https://example.com/a")
-BLOCKED_SITE = FocusTarget(app_name="Safari", bundle_id="com.apple.Safari", url="https://www.youtube.com/x")
+OTHER_UNLISTED = FocusTarget(
+    app_name="Safari", bundle_id="com.apple.Safari", url="https://example.com/a"
+)
+BLOCKED_SITE = FocusTarget(
+    app_name="Safari", bundle_id="com.apple.Safari", url="https://www.youtube.com/x"
+)
 
 
 def make_config() -> Config:
     cfg = Config()
     cfg.profiles = [
-        Profile(name="Test", approved=["app:Code", "site:github.com"], disapproved=["site:youtube.com"])
+        Profile(
+            name="Test", approved=["app:Code", "site:github.com"], disapproved=["site:youtube.com"]
+        )
     ]
     cfg.active_profile = "Test"
     cfg.normalize()
@@ -321,8 +326,13 @@ class IgnoredCheckinNoticeTest(unittest.TestCase):
             with mock.patch("ontask.app.get_provider"):
                 controller = Controller(shell=mock.Mock(), config_path=path)
             controller._announce(
-                Answered(kind=DISTRACTION, yes=False, interval_minutes=3,
-                         ignored=True, penalty_seconds=penalty)
+                Answered(
+                    kind=DISTRACTION,
+                    yes=False,
+                    interval_minutes=3,
+                    ignored=True,
+                    penalty_seconds=penalty,
+                )
             )
             return controller.shell.notify.call_args[0][1]
 
@@ -331,9 +341,7 @@ class IgnoredCheckinNoticeTest(unittest.TestCase):
         self.assertIn("2:30 taken off the session clock", message)
 
     def test_the_notice_stays_short_without_a_penalty(self):
-        self.assertEqual(
-            self._announce(0), "No answer - reminders reset to the shortest interval."
-        )
+        self.assertEqual(self._announce(0), "No answer - reminders reset to the shortest interval.")
 
 
 class SummaryTest(unittest.TestCase):
@@ -432,6 +440,7 @@ class IpcTest(unittest.TestCase):
         lock.acquire()
         if os.name != "nt":
             self.assertEqual((self.dir / ipc.LOCK_NAME).stat().st_mode & 0o777, 0o600)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

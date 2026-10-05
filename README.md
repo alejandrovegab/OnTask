@@ -271,10 +271,21 @@ falls back to plain ladder reminders rather than nagging.
 ## Development
 
 ```sh
-./.venv/bin/python -m unittest discover -s tests   # 131 tests, fake clock, instant
-./.venv/bin/python -m ontask --headless            # watch focus detection live
-./.venv/bin/python -m ontask --settings            # settings window on its own
+./.venv/bin/pip install -e ".[dev]"          # test, lint and security tools
+./.venv/bin/python -m pytest                 # the suite: fake clock, runs in about a second
+./.venv/bin/ruff check ontask tests          # lint
+./.venv/bin/ruff format ontask tests         # format
+./.venv/bin/python -m ontask --headless      # watch focus detection live
+./.venv/bin/python -m ontask --settings      # settings window on its own
 ```
+
+Tests never touch your real settings: `tests/conftest.py` points them at a
+throwaway config directory.
+
+Every pull request runs CI (`.github/workflows/ci.yml`):
+- lint, formatting and a `bandit` security scan,
+- the tests on macOS, Windows and Linux,
+- `pip-audit` of each platform's dependencies.
 
 Layout:
 

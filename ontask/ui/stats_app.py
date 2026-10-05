@@ -23,7 +23,7 @@ from tkinter import messagebox, ttk
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from ontask import ipc  # noqa: E402
-from ontask.stats import Stats, Summary, format_hour, format_span, default_stats_path  # noqa: E402
+from ontask.stats import Stats, Summary, default_stats_path, format_hour, format_span  # noqa: E402
 from ontask.ui.tk_window import bring_to_front, watch_raise  # noqa: E402
 
 DAY = 86400.0
@@ -100,8 +100,12 @@ class Chart(tk.Canvas):
                 x = base_x + bar_w * series_index
                 bar_h = plot_h * (value / peak)
                 self.create_rectangle(
-                    x, top + plot_h - bar_h, x + bar_w - 1, top + plot_h,
-                    fill=self._series[series_index][1], width=0,
+                    x,
+                    top + plot_h - bar_h,
+                    x + bar_w - 1,
+                    top + plot_h,
+                    fill=self._series[series_index][1],
+                    width=0,
                 )
 
     def _draw_lines(self, left, top, plot_w, plot_h, peak) -> None:
@@ -125,8 +129,10 @@ class Chart(tk.Canvas):
         for index, (label, _values) in enumerate(self._rows):
             if index % stride:
                 continue
-            x = left + slot * index + slot / 2 if self._mode == "bars" else (
-                left + (plot_w / max(1, len(self._rows) - 1)) * index
+            x = (
+                left + slot * index + slot / 2
+                if self._mode == "bars"
+                else (left + (plot_w / max(1, len(self._rows) - 1)) * index)
             )
             self.create_text(x, top + plot_h + 12, text=label, fill=MUTED, font=("", 9))
 
@@ -181,7 +187,9 @@ class StatsWindow:
         self.summary_grid = ttk.Frame(self.summary_box)
         self.summary_grid.pack(fill="x")
 
-        self.profile_box = ttk.LabelFrame(self.scroll_host, text="Session time by profile", padding=10)
+        self.profile_box = ttk.LabelFrame(
+            self.scroll_host, text="Session time by profile", padding=10
+        )
         self.profile_box.pack(fill="x", pady=(12, 0))
         self.profile_grid = ttk.Frame(self.profile_box)
         self.profile_grid.pack(fill="x")
@@ -211,9 +219,7 @@ class StatsWindow:
         choice = self.range_var.get()
         if choice == "Today":
             local = time.localtime()
-            midnight = time.mktime(
-                (local.tm_year, local.tm_mon, local.tm_mday, 0, 0, 0, 0, 0, -1)
-            )
+            midnight = time.mktime((local.tm_year, local.tm_mon, local.tm_mday, 0, 0, 0, 0, 0, -1))
             return midnight
         window = RANGES.get(choice)
         return time.time() - window if window else None
@@ -243,11 +249,7 @@ class StatsWindow:
         self.reload()
 
     def _fill_summary(self, s: Summary) -> None:
-        recovered = (
-            f"{s.recovered_count}"
-            if s.recovered_count
-            else "0"
-        )
+        recovered = f"{s.recovered_count}" if s.recovered_count else "0"
         rows = [
             ("Time in sessions", format_span(s.session_seconds)),
             ("Sessions", str(s.session_count)),
@@ -261,7 +263,10 @@ class StatsWindow:
             ("Answered yes", f"{s.yes_rate * 100:.0f}%" if s.answered_count else "-"),
             ("Check-ins followed by a return to work", recovered),
             ("Most focused hour", format_hour(s.best_hour()) if s.best_hour() is not None else "-"),
-            ("Most distracted hour", format_hour(s.worst_hour()) if s.worst_hour() is not None else "-"),
+            (
+                "Most distracted hour",
+                format_hour(s.worst_hour()) if s.worst_hour() is not None else "-",
+            ),
         ]
         _fill_grid(self.summary_grid, rows, columns=2)
 
@@ -304,10 +309,7 @@ class StatsWindow:
             unit="minutes",
         )
         self.day_chart.show(
-            [
-                (day[5:], [session / 60.0, off / 60.0])
-                for day, session, off in s.by_day
-            ],
+            [(day[5:], [session / 60.0, off / 60.0]) for day, session, off in s.by_day],
             [("Session minutes", INK), ("Minutes off task", WARN)],
             mode="lines",
             unit="minutes",

@@ -30,7 +30,7 @@ class Rule:
     raw: str
 
     @classmethod
-    def parse(cls, text: str) -> "Rule | None":
+    def parse(cls, text: str) -> Rule | None:
         raw = (text or "").strip()
         if not raw or raw.startswith("#"):
             return None
@@ -39,7 +39,7 @@ class Rule:
         for prefix in ("app:", "site:", "url:", "domain:"):
             if body.lower().startswith(prefix):
                 kind = "app" if prefix == "app:" else "site"
-                body = body[len(prefix):].strip()
+                body = body[len(prefix) :].strip()
                 break
         if not body:
             return None
@@ -87,7 +87,7 @@ class Rule:
 def _strip_scheme(value: str) -> str:
     for scheme in ("http://", "https://"):
         if value.lower().startswith(scheme):
-            return value[len(scheme):]
+            return value[len(scheme) :]
     return value
 
 

@@ -122,7 +122,9 @@ class NotificationDelegateTest(unittest.TestCase):
 
     def test_plain_click_is_not_an_answer(self):
         answers = []
-        done = self._respond(self._delegate(answers), "com.apple.UNNotificationDefaultActionIdentifier", answers)
+        done = self._respond(
+            self._delegate(answers), "com.apple.UNNotificationDefaultActionIdentifier", answers
+        )
         self.assertEqual(answers, [])
         self.assertEqual(done, [True], "the completion handler must still run")
 
@@ -161,8 +163,10 @@ class PromptRoutingTest(unittest.TestCase):
         cfg.general.hotkeys.answer_yes = ""
         cfg.general.hotkeys.answer_no = ""
         cfg.save(path)
-        with mock.patch("ontask.app.Config.load", return_value=Config.load(path)), \
-             mock.patch("rumps.Timer"):
+        with (
+            mock.patch("ontask.app.Config.load", return_value=Config.load(path)),
+            mock.patch("rumps.Timer"),
+        ):
             self.app = OnTaskApp()
         self.app.prompt = mock.Mock()
         self.app.notifier = mock.Mock()
@@ -259,7 +263,6 @@ class PromptRoutingTest(unittest.TestCase):
         self.assertIn("Global hotkeys:", report)
 
 
-
 @unittest.skipUnless(HAVE_MAC_UI, "macOS UI stack not installed")
 class PromptFocusHandoverTest(unittest.TestCase):
     def _window_with_previous_app(self):
@@ -287,6 +290,7 @@ class PromptFocusHandoverTest(unittest.TestCase):
             window._restore_front_app()
         previous.activateWithOptions_.assert_not_called()
         self.assertIsNone(window._previous_app)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
