@@ -81,7 +81,7 @@ Running from source means the prompts name your terminal and banners say
 
 ```sh
 ./.venv/bin/pip install py2app
-./.venv/bin/python setup_app.py py2app
+./.venv/bin/python packaging/macos/setup_app.py py2app
 ```
 
 ## Using it

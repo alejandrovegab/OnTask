@@ -1,17 +1,21 @@
 """Build a real OnTask.app bundle with py2app.
 
     pip install py2app
-    python setup_app.py py2app
+    python packaging/macos/setup_app.py py2app
 
 A bundle is worth building once you use OnTask daily: notifications need a
 bundled app, the permission prompts name "OnTask" instead of your terminal, and
 the grants survive Python upgrades.
 """
 
+from pathlib import Path
+
 from setuptools import setup
 
+ROOT = Path(__file__).resolve().parents[2]
+
 setup(
-    app=["ontask/__main__.py"],
+    app=[str(ROOT / "src" / "ontask" / "__main__.py")],
     name="OnTask",
     data_files=[],
     options={
