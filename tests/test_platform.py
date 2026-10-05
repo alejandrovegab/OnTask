@@ -424,6 +424,52 @@ class ProviderSelectionTest(unittest.TestCase):
         self.assertTrue(provider.current().is_unknown)
 
 
+class SelfCommandTest(unittest.TestCase):
+    """How the app starts its own windows, from source and from a bundle."""
+
+    def test_from_source_it_runs_the_package(self):
+        from ontask.__main__ import self_command
+
+        with mock.patch.object(sys, "frozen", False, create=True):
+            self.assertEqual(self_command(), [sys.executable, "-m", "ontask"])
+
+    def test_inside_a_py2app_bundle_it_runs_the_bundle(self):
+        from ontask.__main__ import self_command
+
+        exe = "/Applications/OnTask.app/Contents/MacOS/OnTask"
+        with (
+            mock.patch.object(sys, "frozen", "macosx_app", create=True),
+            mock.patch.dict("os.environ", {"ARGVZERO": exe}),
+        ):
+            self.assertEqual(self_command(), [exe])
+
+    def test_windows_open_through_the_window_flag(self):
+        from ontask.app import Controller
+        from ontask.core.config import Config
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.json"
+            Config().save(path)
+            with mock.patch("ontask.app.get_provider"):
+                controller = Controller(config_path=path)
+            with (
+                mock.patch("ontask.app.self_command", return_value=["ontask-exe"]),
+                mock.patch("ontask.app.subprocess.Popen") as popen,
+            ):
+                controller.open_stats()
+            popen.assert_called_once_with(
+                ["ontask-exe", "--window", "stats", "--config", str(path)]
+            )
+
+    def test_every_window_module_has_a_main(self):
+        import importlib
+
+        from ontask.__main__ import WINDOWS
+
+        for name, module in WINDOWS.items():
+            self.assertTrue(callable(importlib.import_module(module).main), name)
+
+
 class EntryPointTest(unittest.TestCase):
     def test_config_flag_reaches_the_shell(self):
         # The lock and the nudge signals live beside the config, so the shell

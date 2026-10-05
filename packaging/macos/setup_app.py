@@ -1,21 +1,24 @@
-"""Build a real OnTask.app bundle with py2app.
+"""py2app configuration for OnTask.app.
 
-    pip install py2app
-    python packaging/macos/setup_app.py py2app
-
-A bundle is worth building once you use OnTask daily: notifications need a
-bundled app, the permission prompts name "OnTask" instead of your terminal, and
-the grants survive Python upgrades.
+Run through scripts/build-mac-app.sh rather than directly: the script also
+replaces py2app's launcher with one built against this Mac's SDK and signs the
+bundle, neither of which py2app does.
 """
 
+import tomllib
 from pathlib import Path
 
 from setuptools import setup
 
 ROOT = Path(__file__).resolve().parents[2]
+VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+
+# Shared with the Flatpak, and how macOS, the keychain and notifications know
+# the app. Changing it resets every user's permissions, so it stays fixed.
+BUNDLE_ID = "io.github.alejandrovegab.OnTask"
 
 setup(
-    app=[str(ROOT / "src" / "ontask" / "__main__.py")],
+    app=[str(Path(__file__).with_name("launch.py"))],
     name="OnTask",
     data_files=[],
     options={
@@ -25,9 +28,10 @@ setup(
             "plist": {
                 "CFBundleName": "OnTask",
                 "CFBundleDisplayName": "OnTask",
-                "CFBundleIdentifier": "com.ontask.app",
-                "CFBundleVersion": "1.0.0",
-                "CFBundleShortVersionString": "1.0.0",
+                "CFBundleIdentifier": BUNDLE_ID,
+                "CFBundleVersion": VERSION,
+                "CFBundleShortVersionString": VERSION,
+                "LSMinimumSystemVersion": "15.0",
                 # Menu bar only: no Dock icon, no app switcher entry.
                 "LSUIElement": True,
                 "NSAppleEventsUsageDescription": (
@@ -37,5 +41,4 @@ setup(
             },
         }
     },
-    setup_requires=["py2app"],
 )

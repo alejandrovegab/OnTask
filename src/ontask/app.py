@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import queue
 import subprocess
-import sys
 import time
 from pathlib import Path
 
 from . import ipc
+from .__main__ import self_command
 from .core import engine as eng
 from .core.config import Config, Profile
 from .core.engine import Engine, format_duration
@@ -254,17 +254,17 @@ class Controller:
     # -- settings ---------------------------------------------------------
 
     def open_settings(self) -> None:
-        self._open_window("ontask.ui.tk.settings", "_settings_proc", ipc.RAISE_SETTINGS)
+        self._open_window("settings", "_settings_proc", ipc.RAISE_SETTINGS)
 
     def open_first_run(self) -> None:
         """Offer the browser picker once, on the first launch."""
-        self._open_window("ontask.ui.tk.browser_setup", "_setup_proc", ipc.RAISE_SETUP)
+        self._open_window("setup", "_setup_proc", ipc.RAISE_SETUP)
 
     def open_stats(self) -> None:
         self.stats.maybe_save(force=True)
-        self._open_window("ontask.ui.tk.stats", "_stats_proc", ipc.RAISE_STATS)
+        self._open_window("stats", "_stats_proc", ipc.RAISE_STATS)
 
-    def _open_window(self, module: str, attribute: str, raise_marker: str) -> None:
+    def _open_window(self, window: str, attribute: str, raise_marker: str) -> None:
         """Show a helper window, reusing the one already open.
 
         Spawning a second copy would strand the user's unsaved edits in a window
@@ -275,10 +275,12 @@ class Controller:
         if existing is not None and existing.poll() is None:
             ipc.Signal(self._runtime_dir, raise_marker).send()
             return
-        path = str(self.config.path or "")
+        command = [*self_command(), "--window", window]
+        if self.config.path:
+            command += ["--config", str(self.config.path)]
         # A separate process keeps Tk off the menu bar app's run loop.
         try:
-            proc = subprocess.Popen([sys.executable, "-m", module, path])
+            proc = subprocess.Popen(command)
         except OSError:
             return
         setattr(self, attribute, proc)
