@@ -22,6 +22,7 @@ from tkinter import messagebox, ttk
 
 from ontask import ipc
 from ontask.stats import Stats, Summary, default_stats_path, format_hour, format_span
+from ontask.ui.tk.scrolling import WheelScroller
 from ontask.ui.tk.window import bring_to_front, watch_raise
 
 DAY = 86400.0
@@ -341,7 +342,8 @@ def _scrollable(parent) -> tuple[ttk.Frame, ttk.Frame]:
     bar.pack(side="right", fill="y")
     inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
     canvas.bind("<Configure>", lambda e: canvas.itemconfigure(window, width=e.width))
-    canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(-1 * (e.delta // 3), "units"))
+    # Kept on the holder so it lives as long as the scrolling area does.
+    holder.wheel = WheelScroller(holder, canvas)
     return holder, inner
 
 
