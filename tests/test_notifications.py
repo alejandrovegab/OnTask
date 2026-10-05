@@ -261,6 +261,17 @@ class PromptRoutingTest(unittest.TestCase):
 
 
 @unittest.skipUnless(HAVE_MAC_UI, "macOS UI stack not installed")
+class LockScreenPrivacyTest(unittest.TestCase):
+    def test_hidden_previews_show_a_placeholder_not_the_site(self):
+        from ontask.platform.macos.notify import Notifier
+
+        notifier = Notifier(lambda yes: None, auto_query=False)
+        category = notifier._category()
+        self.assertEqual(str(category.hiddenPreviewsBodyPlaceholder()), "Check-in")
+        self.assertTrue(int(category.options()) & (1 << 2), "the OnTask title stays visible")
+
+
+@unittest.skipUnless(HAVE_MAC_UI, "macOS UI stack not installed")
 class PromptFocusHandoverTest(unittest.TestCase):
     def _window_with_previous_app(self):
         from ontask.platform.macos.prompt import PromptWindow
