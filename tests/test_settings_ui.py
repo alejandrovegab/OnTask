@@ -193,5 +193,54 @@ class SettingsWindowTest(unittest.TestCase):
         self.assertEqual(Config.load(self.path).general.prompt_position, "bottom_right")
 
 
+
+@unittest.skipUnless(HAVE_TK, "no Tk display")
+class FirstRunWindowTest(unittest.TestCase):
+    def setUp(self):
+        from unittest import mock
+
+        from ontask.ui.browser_setup import FirstRunWindow
+
+        patcher = mock.patch(
+            "ontask.ui.browser_setup.installed_browsers", return_value=list(INSTALLED)
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name) / "config.json"
+        Config().save(self.path)
+        self.root = tk.Tk()
+        self.root.withdraw()
+        self.addCleanup(self._destroy)
+        self.window = FirstRunWindow(self.root, self.path)
+
+    def _destroy(self):
+        try:
+            self.root.destroy()
+        except tk.TclError:
+            pass
+
+    def _edit_elsewhere(self):
+        # Settings saves a change while the picker is still open.
+        other = Config.load(self.path)
+        other.profile().approved.append("app:Figma")
+        other.save()
+
+    def test_continuing_keeps_changes_saved_meanwhile(self):
+        self._edit_elsewhere()
+        self.window.finish()
+        saved = Config.load(self.path)
+        self.assertIn("app:Figma", saved.profile().approved)
+        self.assertTrue(saved.setup_complete)
+
+    def test_closing_keeps_changes_saved_meanwhile(self):
+        self._edit_elsewhere()
+        self.window.answer(None)
+        saved = Config.load(self.path)
+        self.assertIn("app:Figma", saved.profile().approved)
+        self.assertTrue(saved.setup_complete)
+        self.assertEqual([b.bundle_id for b in saved.general.browsers], ["com.apple.Safari"])
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

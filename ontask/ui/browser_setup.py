@@ -34,7 +34,8 @@ from ontask.browsers import (  # noqa: E402
 )
 from ontask.config import Config  # noqa: E402
 from ontask.ui.app_icons import icon_base64  # noqa: E402
-from ontask.ui.tk_window import bring_to_front  # noqa: E402
+from ontask import ipc  # noqa: E402
+from ontask.ui.tk_window import bring_to_front, watch_raise  # noqa: E402
 
 ROUTE_NOTES = {
     ACCESSIBILITY: "reads the address bar, needs Accessibility",
@@ -185,11 +186,24 @@ class FirstRunWindow:
         ttk.Button(footer, text="Continue", command=self.finish).pack(side="right")
 
     def finish(self) -> None:
-        self.config.general.browsers = self.list.selected()
-        self.config.setup_complete = True
-        self.config.normalize()
-        self.config.save()
+        self.answer(self.list.selected())
         self.root.destroy()
+
+    def answer(self, browsers: list[Browser] | None) -> None:
+        """Record the picker's answer on top of whatever is on disk *now*.
+
+        The window can sit open while Settings or the menu bar app save their
+        own changes, so writing back the copy loaded at startup would undo
+        them. Only the two fields this window owns are touched. `None` means
+        the window was closed without choosing: keep the browsers as they are.
+        """
+        config = Config.load(self.config.path)
+        if browsers is not None:
+            config.general.browsers = list(browsers)
+        config.setup_complete = True
+        config.normalize()
+        config.save()
+        self.config = config
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -202,12 +216,12 @@ def main(argv: list[str] | None = None) -> int:
         pass
     window = FirstRunWindow(root, path)
     bring_to_front(root)
+    watch_raise(root, path, ipc.RAISE_SETUP)
     root.mainloop()
     # Closing the window with the red button still counts as answered, so the
     # picker does not reappear on every launch.
     if not window.config.setup_complete:
-        window.config.setup_complete = True
-        window.config.save()
+        window.answer(None)
     return 0
 
 

@@ -22,6 +22,7 @@ LOCK_NAME = ".ontask.lock"
 OPEN_SETTINGS = ".ontask-open-settings"
 RAISE_SETTINGS = ".ontask-raise-settings"
 RAISE_STATS = ".ontask-raise-stats"
+RAISE_SETUP = ".ontask-raise-setup"
 STATS_CLEARED = ".ontask-stats-cleared"
 
 

@@ -235,7 +235,7 @@ class Controller:
 
     def open_first_run(self) -> None:
         """Offer the browser picker once, on the first launch."""
-        self._open_window("ontask.ui.browser_setup", "_setup_proc", ipc.RAISE_SETTINGS)
+        self._open_window("ontask.ui.browser_setup", "_setup_proc", ipc.RAISE_SETUP)
 
     def open_stats(self) -> None:
         self.stats.maybe_save(force=True)
