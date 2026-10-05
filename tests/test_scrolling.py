@@ -7,7 +7,7 @@ from unittest import mock
 try:
     import tkinter as tk
 
-    from ontask.ui.tk.scrolling import STEPS_PER_NOTCH, WheelScroller, wheel_steps
+    from ontask.ui.tk.scrolling import STEPS_PER_NOTCH, WheelScroller, step_pixels, wheel_steps
 
     _root = tk.Tk()
     _root.withdraw()
@@ -62,17 +62,38 @@ class WheelScrollerTest(unittest.TestCase):
             self.scroller.scroll(0.25)  # a Windows precision touchpad, say
         self.assertEqual(sum(self.scrolled), 2)
 
-    def test_steps_are_small_fixed_pixels(self):
-        self.assertEqual(int(self.canvas.cget("yscrollincrement")), 16)
+    def test_scrolling_is_by_the_pixel(self):
+        self.assertEqual(int(self.canvas.cget("yscrollincrement")), 1)
+
+    def test_macos_steps_are_small_and_a_notch_elsewhere_is_larger(self):
+        self.assertEqual(step_pixels("darwin"), 4)
+        self.assertEqual(step_pixels("win32") * STEPS_PER_NOTCH, 48)
 
     def test_only_scrolls_with_the_pointer_over_the_area(self):
         elsewhere = tk.Frame(self.root)
         with mock.patch.object(self.area, "winfo_containing", return_value=elsewhere):
             self.scroller.on_wheel(wheel(-3))
+        self.scroller.flush()
         self.assertEqual(self.scrolled, [])
         with mock.patch.object(self.area, "winfo_containing", return_value=self.canvas):
             self.scroller.on_wheel(wheel(-3))
-        self.assertEqual(self.scrolled, [3])
+        self.scroller.flush()
+        self.assertEqual(self.scrolled, [3 * step_pixels("darwin")])
+
+    def test_a_burst_of_events_is_applied_as_one_move(self):
+        with mock.patch.object(self.area, "winfo_containing", return_value=self.canvas):
+            for _ in range(5):
+                self.scroller.on_wheel(wheel(-1))
+        self.assertEqual(self.scrolled, [], "nothing moves until the frame")
+        self.scroller.flush()
+        self.assertEqual(self.scrolled, [5 * step_pixels("darwin")])
+
+    def test_a_scroll_left_waiting_when_the_window_closes_is_dropped(self):
+        def gone(n, what):
+            raise tk.TclError("invalid command name")
+
+        self.canvas.yview_scroll = gone
+        self.assertEqual(self.scroller.scroll(8), 0)
 
 
 if __name__ == "__main__":
