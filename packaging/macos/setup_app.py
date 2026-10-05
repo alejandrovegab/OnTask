@@ -15,7 +15,7 @@ from setuptools import setup
 ROOT = Path(__file__).resolve().parents[2]
 
 setup(
-    app=[str(ROOT / "src" / "ontask" / "__main__.py")],
+    app=[str(Path(__file__).with_name("launch.py"))],
     name="OnTask",
     data_files=[],
     options={
