@@ -31,7 +31,8 @@ class ConsoleShell(Shell):
 
 def run(config_path: str | None = None) -> int:
     path = Path(config_path) if config_path else None
-    controller = Controller(shell=ConsoleShell(), config_path=path)
+    # `shell` is OnTask's UI shell, not subprocess's shell flag.
+    controller = Controller(shell=ConsoleShell(), config_path=path)  # nosec B604
     controller.start_session()
     print(f"Config: {controller.config.path}")
     print(f"Focus provider: {type(controller.focus).__name__}")
