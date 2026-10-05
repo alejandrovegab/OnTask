@@ -311,6 +311,31 @@ class StatsResetTest(unittest.TestCase):
         self.assertEqual([e["profile"] for e in stats.events], ["New"])
 
 
+class IgnoredCheckinNoticeTest(unittest.TestCase):
+    def _announce(self, penalty):
+        from ontask.app import Controller
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.json"
+            Config().save(path)
+            with mock.patch("ontask.app.get_provider"):
+                controller = Controller(shell=mock.Mock(), config_path=path)
+            controller._announce(
+                Answered(kind=DISTRACTION, yes=False, interval_minutes=3,
+                         ignored=True, penalty_seconds=penalty)
+            )
+            return controller.shell.notify.call_args[0][1]
+
+    def test_the_notice_says_when_time_came_off_the_clock(self):
+        message = self._announce(150)
+        self.assertIn("2:30 taken off the session clock", message)
+
+    def test_the_notice_stays_short_without_a_penalty(self):
+        self.assertEqual(
+            self._announce(0), "No answer - reminders reset to the shortest interval."
+        )
+
+
 class SummaryTest(unittest.TestCase):
     def _events(self):
         # 09:00 local on a fixed day, so hour bucketing is deterministic.

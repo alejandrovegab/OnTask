@@ -156,7 +156,15 @@ class Controller:
 
     def _announce(self, event: eng.Answered) -> None:
         if event.ignored:
-            self.shell.notify("OnTask", "No answer - reminders reset to the shortest interval.")
+            message = "No answer - reminders reset to the shortest interval."
+            if event.penalty_seconds > 0:
+                # An unanswered check-in counts as a No, so the clock can drop;
+                # saying so is what keeps that from looking like a glitch.
+                message = (
+                    "No answer - reminders reset and "
+                    f"{format_duration(event.penalty_seconds)} taken off the session clock."
+                )
+            self.shell.notify("OnTask", message)
         elif event.advanced:
             minutes = _fmt(event.interval_minutes)
             self.shell.notify("OnTask", f"Nice. Next check-in in {minutes} minutes.")
