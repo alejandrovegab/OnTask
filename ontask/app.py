@@ -60,6 +60,7 @@ class Controller:
         self._wake_hook = None
         self._runtime_dir = ipc.runtime_dir(self.config.path)
         self._open_settings_signal = ipc.Signal(self._runtime_dir, ipc.OPEN_SETTINGS)
+        self._stats_cleared_signal = ipc.Signal(self._runtime_dir, ipc.STATS_CLEARED)
         self._settings_proc = None
         self._stats_proc = None
         self._setup_proc = None
@@ -112,6 +113,9 @@ class Controller:
             # A second launch (Spotlight, Dock, another terminal) asking the
             # instance that is already running to show itself.
             self.open_settings()
+        if self._stats_cleared_signal.received():
+            self.stats.forget_before(self._stats_cleared_signal.sent_at())
+            self.stats.maybe_save(force=True)
         try:
             self.target = self.focus.current(self.config.general.browsers)
         except Exception:

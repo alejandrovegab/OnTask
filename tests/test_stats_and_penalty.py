@@ -9,6 +9,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -271,6 +272,43 @@ class StatsStoreTest(unittest.TestCase):
         recent = self.stats.summary(since=self.now - 5)
         self.assertEqual(recent.session_seconds, 120)
         self.assertEqual(list(recent.seconds_by_profile), ["B"])
+
+
+class StatsResetTest(unittest.TestCase):
+    """A reset in the statistics window must survive the running app's next save."""
+
+    def setUp(self):
+        from ontask.app import Controller
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.config_path = Path(self.tmp.name) / "config.json"
+        Config().save(self.config_path)
+        with mock.patch("ontask.app.get_provider") as provider:
+            provider.return_value.current.return_value = FocusTarget()
+            self.controller = Controller(config_path=self.config_path)
+        self.stats_path = self.controller.stats.path
+
+    def test_the_running_app_drops_what_the_window_cleared(self):
+        self.controller.stats.record_session(1800, "Deep Work")
+        self.controller.stats.maybe_save(force=True)
+
+        # The statistics window, in its own process, clears the log and nudges.
+        window_copy = Stats.load(self.stats_path)
+        window_copy.clear()
+        ipc.Signal(ipc.runtime_dir(self.config_path), ipc.STATS_CLEARED).send()
+
+        self.controller.poll()
+        self.assertEqual(self.controller.stats.events, [])
+        self.assertEqual(Stats.load(self.stats_path).events, [])
+
+    def test_events_after_the_reset_are_kept(self):
+        stats = Stats(path=self.stats_path, clock=lambda: 100.0)
+        stats.record_session(60, "Old")
+        stats.clock = lambda: 300.0
+        stats.record_session(60, "New")
+        stats.forget_before(200.0)
+        self.assertEqual([e["profile"] for e in stats.events], ["New"])
 
 
 class SummaryTest(unittest.TestCase):

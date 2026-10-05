@@ -22,6 +22,7 @@ LOCK_NAME = ".ontask.lock"
 OPEN_SETTINGS = ".ontask-open-settings"
 RAISE_SETTINGS = ".ontask-raise-settings"
 RAISE_STATS = ".ontask-raise-stats"
+STATS_CLEARED = ".ontask-stats-cleared"
 
 
 def runtime_dir(config_path: Path | None) -> Path:
@@ -137,6 +138,13 @@ class Signal:
             self.path.write_text(str(time.time()), encoding="utf-8")
         except OSError:
             pass
+
+    def sent_at(self) -> float:
+        """Wall-clock time of the last nudge, as written by `send`; 0 if unknown."""
+        try:
+            return float(self.path.read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            return 0.0
 
     def received(self) -> bool:
         """True once per nudge sent since the last call."""

@@ -237,6 +237,9 @@ class StatsWindow:
         ):
             return
         self.stats.clear()
+        # The running app holds its own copy of the log; tell it to drop
+        # everything up to now, or its next save would restore the lot.
+        ipc.Signal(ipc.runtime_dir(self.config_path), ipc.STATS_CLEARED).send()
         self.reload()
 
     def _fill_summary(self, s: Summary) -> None:

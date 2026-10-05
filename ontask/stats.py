@@ -134,6 +134,18 @@ class Stats:
     def record_recovered(self, key: str, label: str, profile: str) -> None:
         self.record(RECOVERED, key=key, label=label, profile=profile)
 
+    def forget_before(self, stamp: float) -> None:
+        """Drop everything recorded up to `stamp`, keeping anything newer.
+
+        This is how a reset made in the statistics window reaches the running
+        app, which still holds the old events in memory and would otherwise
+        write them straight back on its next save.
+        """
+        kept = [e for e in self.events if float(e.get("t") or 0.0) > stamp]
+        if len(kept) != len(self.events):
+            self.events = kept
+            self._dirty = True
+
     def clear(self) -> None:
         self.events.clear()
         self._dirty = True
