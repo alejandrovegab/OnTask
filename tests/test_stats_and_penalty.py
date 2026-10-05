@@ -93,8 +93,8 @@ class ClockPenaltyTest(unittest.TestCase):
 
     def test_off_task_no_costs_the_off_task_wait(self):
         before, after, answered = self._answer_no(UNLISTED_APP, DISTRACTION)
-        self.assertEqual(answered.penalty_seconds, 150.0)
-        self.assertAlmostEqual(before - after, 150.0)
+        self.assertEqual(answered.penalty_seconds, 60.0)
+        self.assertAlmostEqual(before - after, 60.0)
 
     def test_approved_no_costs_the_approved_amount(self):
         before, after, answered = self._answer_no(APPROVED_APP, CADENCE)
@@ -150,16 +150,16 @@ class OffTaskTimerTest(unittest.TestCase):
 
     def test_switching_between_unapproved_targets_keeps_counting(self):
         h = Harness()
-        h.run(100, UNLISTED_APP)
-        # Well past the 150s grace in total, but split across two apps.
-        events = h.run(80, OTHER_UNLISTED)
+        h.run(40, UNLISTED_APP)
+        # Past the 60s grace in total, but split across two apps.
+        events = h.run(30, OTHER_UNLISTED)
         self.assertTrue(any(isinstance(e, ShowPrompt) for e in events))
 
     def test_returning_to_approved_work_resets_the_wait(self):
         h = Harness()
-        h.run(140, UNLISTED_APP)  # nearly out of grace
+        h.run(55, UNLISTED_APP)  # nearly out of grace
         h.run(10, APPROVED_APP)  # back on task
-        events = h.run(140, UNLISTED_APP)  # a fresh 150s should be granted
+        events = h.run(55, UNLISTED_APP)  # a fresh 60s should be granted
         self.assertFalse(any(isinstance(e, ShowPrompt) for e in events))
 
     def test_the_blocked_wait_is_per_target_and_needs_to_be_continuous(self):

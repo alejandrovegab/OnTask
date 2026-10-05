@@ -15,7 +15,7 @@ from typing import Any
 
 from .browsers import Browser, coerce as coerce_browser, default_browsers
 
-CONFIG_VERSION = 1
+CONFIG_VERSION = 2
 
 
 def default_config_path() -> Path:
@@ -51,6 +51,24 @@ def _read_browsers(value: Any) -> list[Browser]:
         if browser is not None:
             browsers.append(browser)
     return browsers
+
+
+def _migrate(d: dict[str, Any]) -> dict[str, Any]:
+    """Bring a config written by an older version up to CONFIG_VERSION.
+
+    Each step runs once: the result is stamped with the current version, so a
+    value the user sets afterwards is never touched again.
+    """
+    d = dict(d)
+    version = int(_get(d, "version", 1))
+    if version < 2:
+        reminder = d.get("reminder")
+        if isinstance(reminder, dict) and reminder.get("distraction_grace_seconds") == 150:
+            # 150 s was the shipped default before version 2. A config still at
+            # exactly that never chose it, so it follows the new 60 s default.
+            d["reminder"] = {**reminder, "distraction_grace_seconds": 60.0}
+    d["version"] = CONFIG_VERSION
+    return d
 
 
 @dataclass
@@ -184,7 +202,7 @@ class ReminderSettings:
 
     intervals_minutes: list[float] = field(default_factory=lambda: [3, 5, 7, 10, 14, 20])
     advance_after_yes: list[int] = field(default_factory=lambda: [1, 2, 2, 3, 3])
-    distraction_grace_seconds: float = 150.0
+    distraction_grace_seconds: float = 60.0
     disapproved_grace_seconds: float = 10.0
     suggest_approve_after_yes: int = 3
     no_response: NoResponse = field(default_factory=NoResponse)
@@ -378,7 +396,7 @@ class Config:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Config":
-        d = d or {}
+        d = _migrate(d or {})
         profiles = [Profile.from_dict(p) for p in _get(d, "profiles", [])]
         cfg = cls(
             version=int(_get(d, "version", CONFIG_VERSION)),
@@ -423,6 +441,12 @@ class Config:
             return cfg
         cfg = cls.from_dict(raw)
         cfg.path = path
+        if isinstance(raw, dict) and raw.get("version") != CONFIG_VERSION:
+            # Persist the migration so it happens once, not on every load.
+            try:
+                cfg.save()
+            except OSError:
+                pass
         return cfg
 
     def save(self, path: Path | None = None) -> Path:

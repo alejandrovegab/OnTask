@@ -10,7 +10,7 @@ Two independent timers run:
 * the **cadence** timer, which only counts down while the frontmost target is
   approved, and which escalates up the ladder on each yes;
 * the **off-task** timer, which counts continuous time on unlisted targets
-  (default 2.5 min) or time on an explicitly blocked target (default 10 s).
+  (default 1 min) or time on an explicitly blocked target (default 10 s).
 
 Answering an off-task prompt with yes never advances the ladder; it just buys
 another base interval, per the spec.
