@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "ontask"
 version = "1.0.0"
 description = "Periodic on-task check-ins with focus tracking and escalating reminder intervals."
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "rumps>=0.4.0; sys_platform == 'darwin'",
     "pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'",
@@ -36,7 +36,7 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 # pycodestyle, pyflakes, import order, bugbear, and pyupgrade.
