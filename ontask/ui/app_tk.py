@@ -9,13 +9,13 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from ..app import Controller
+from ..app import Controller, Shell
 from ..engine import IDLE, PAUSED, RUNNING, ActivePrompt
 from ..hotkeys import HotkeyManager
 from .prompt_tk import TkPrompt
 
 
-class TkShell:
+class TkShell(Shell):
     def __init__(self) -> None:
         self.root = tk.Tk()
         self.root.title("OnTask")

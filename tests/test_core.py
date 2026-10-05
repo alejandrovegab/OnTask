@@ -374,5 +374,18 @@ class ConfigTest(unittest.TestCase):
             self.assertEqual(loaded.active_profile, "Test")
 
 
+class ShellInterfaceTest(unittest.TestCase):
+    def test_tk_shell_implements_every_shell_callback(self):
+        # The controller calls Shell methods unconditionally, so a shell that
+        # does not inherit the defaults crashes the first time a new one lands.
+        try:
+            from ontask.ui.app_tk import TkShell
+        except ImportError as exc:  # pragma: no cover - no Tk on this machine
+            self.skipTest(f"Tk unavailable: {exc}")
+        from ontask.app import Shell
+
+        self.assertTrue(issubclass(TkShell, Shell))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
