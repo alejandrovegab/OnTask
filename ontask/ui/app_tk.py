@@ -108,8 +108,13 @@ class TkShell(Shell):
         return f"{snap.profile} - {format_duration(snap.elapsed_seconds)} elapsed"
 
     def run(self) -> None:
-        self.root.mainloop()
-        self.hotkeys.stop()
+        try:
+            self.root.mainloop()
+        finally:
+            # Closing the window is quitting: bank the running session and
+            # flush the debounced statistics, as the menu bar shell does.
+            self.hotkeys.stop()
+            self.controller.shutdown()
 
 
 def run() -> None:
