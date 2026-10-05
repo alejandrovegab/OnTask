@@ -306,6 +306,15 @@ class PromptWindow:
         if app is None:
             return
         try:
+            # Only hand focus back if it is still ours to give. If the user has
+            # since moved to another app - and then answered with a hotkey, or
+            # the session stopped - pulling them back would cost them their
+            # place instead of saving it.
+            if not NSApp.isActive():
+                return
+        except Exception:
+            return
+        try:
             if not app.isTerminated():
                 app.activateWithOptions_(0)
         except Exception:

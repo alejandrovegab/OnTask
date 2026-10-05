@@ -259,5 +259,34 @@ class PromptRoutingTest(unittest.TestCase):
         self.assertIn("Global hotkeys:", report)
 
 
+
+@unittest.skipUnless(HAVE_MAC_UI, "macOS UI stack not installed")
+class PromptFocusHandoverTest(unittest.TestCase):
+    def _window_with_previous_app(self):
+        from ontask.ui.prompt_macos import PromptWindow
+
+        window = PromptWindow(lambda yes: None)
+        previous = mock.Mock()
+        previous.isTerminated.return_value = False
+        window._previous_app = previous
+        return window, previous
+
+    def test_focus_returns_to_the_app_that_was_in_front(self):
+        window, previous = self._window_with_previous_app()
+        with mock.patch("ontask.ui.prompt_macos.NSApp") as app:
+            app.isActive.return_value = True
+            window._restore_front_app()
+        previous.activateWithOptions_.assert_called_once()
+
+    def test_focus_is_left_alone_once_the_user_has_moved_on(self):
+        # The user switched to another app while the check-in was up, then
+        # answered with a hotkey: they must stay where they are.
+        window, previous = self._window_with_previous_app()
+        with mock.patch("ontask.ui.prompt_macos.NSApp") as app:
+            app.isActive.return_value = False
+            window._restore_front_app()
+        previous.activateWithOptions_.assert_not_called()
+        self.assertIsNone(window._previous_app)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
