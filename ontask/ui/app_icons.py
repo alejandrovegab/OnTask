@@ -35,7 +35,8 @@ def icon_png(app_path: str, size: int = DEFAULT_SIZE) -> bytes | None:
         image = NSWorkspace.sharedWorkspace().iconForFile_(app_path)
         if image is None:
             return None
-        rep = NSBitmapImageRep.alloc().initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel_(
+        # One AppKit selector, so the line cannot be wrapped.
+        rep = NSBitmapImageRep.alloc().initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel_(  # noqa: E501
             None, size, size, 8, 4, True, False, NSDeviceRGBColorSpace, 0, 0
         )
         if rep is None:
