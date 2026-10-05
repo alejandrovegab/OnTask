@@ -7,6 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from ontask.browsers import ACCESSIBILITY, APPLESCRIPT, Browser
 from ontask.config import Config
 
 try:
@@ -20,11 +21,27 @@ except Exception:
     HAVE_TK = False
 
 
+# The picker lists whatever browsers are installed; pinning that keeps the
+# suite from depending on what happens to be on the machine running it.
+INSTALLED = [
+    Browser("Safari", "com.apple.Safari", "safari", ""),
+    Browser("Zen", "app.zen-browser.zen", ACCESSIBILITY, ""),
+    Browser("Google Chrome", "com.google.Chrome", "chromium", ""),
+]
+
+
 @unittest.skipUnless(HAVE_TK, "no Tk display")
 class SettingsWindowTest(unittest.TestCase):
     def setUp(self):
+        from unittest import mock
+
         from ontask.ui.settings_app import SettingsWindow
 
+        patcher = mock.patch(
+            "ontask.ui.browser_setup.installed_browsers", return_value=list(INSTALLED)
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.path = Path(self.tmp.name) / "config.json"
         Config().save(self.path)
@@ -110,12 +127,120 @@ class SettingsWindowTest(unittest.TestCase):
             self.window.remove_profile()
         self.assertNotIn("New Profile", self.window.config.profile_names())
 
-    def test_browser_toggles_persist(self):
-        for name, var in self.window.browser_vars.items():
-            var.set(name in ("Safari", "Firefox"))
-        self.window.save()
-        self.assertEqual(sorted(Config.load(self.path).general.browsers), ["Firefox", "Safari"])
+    def test_only_safari_is_ticked_before_anything_is_chosen(self):
+        ticked = [b.name for b in self.window.browser_list.selected()]
+        self.assertEqual(ticked, ["Safari"])
 
+    def test_untracked_browsers_are_still_offered(self):
+        # Everything installed is listed; only what is ticked gets tracked.
+        listed = {b.name for b, _ in self.window.browser_list._rows}
+        self.assertIn("Safari", listed)
+
+    def test_ticking_a_browser_persists_its_bundle_identity(self):
+        for browser, var in self.window.browser_list._rows:
+            var.set(browser.bundle_id in ("com.apple.Safari", "app.zen-browser.zen"))
+        self.window.save()
+
+        browsers = Config.load(self.path).general.browsers
+        by_id = {b.bundle_id: b for b in browsers}
+        self.assertEqual(set(by_id), {"com.apple.Safari", "app.zen-browser.zen"})
+        self.assertEqual(by_id["app.zen-browser.zen"].flavour, ACCESSIBILITY)
+
+    def test_unticking_everything_turns_url_tracking_off(self):
+        for _, var in self.window.browser_list._rows:
+            var.set(False)
+        self.window.save()
+        self.assertEqual(Config.load(self.path).general.browsers, [])
+
+    def test_adding_a_browser_from_finder_reads_the_bundle(self):
+        import plistlib
+        import tempfile
+        from pathlib import Path as _Path
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            app = _Path(tmp) / "Comet.app"
+            (app / "Contents" / "Resources").mkdir(parents=True)
+            (app / "Contents" / "Resources" / "scripting.sdef").write_text("")
+            with (app / "Contents" / "Info.plist").open("wb") as handle:
+                plistlib.dump(
+                    {"CFBundleIdentifier": "com.example.comet", "CFBundleName": "Comet"}, handle
+                )
+            with mock.patch("tkinter.filedialog.askopenfilename", return_value=str(app)):
+                self.window.browser_list.add_from_finder()
+            self.window.save()
+
+        browsers = Config.load(self.path).general.browsers
+        comet = [b for b in browsers if b.bundle_id == "com.example.comet"]
+        self.assertEqual(len(comet), 1)
+        self.assertEqual(comet[0].name, "Comet")
+        self.assertEqual(comet[0].flavour, APPLESCRIPT)
+
+    def test_clock_penalty_round_trips(self):
+        self.window.penalty_on_var.set(True)
+        self.window.penalty_match_var.set(False)
+        self.window.penalty_fixed_var.set("45")
+        self.window.save()
+
+        penalty = Config.load(self.path).reminder.clock_penalty
+        self.assertTrue(penalty.enabled)
+        self.assertFalse(penalty.match_situation)
+        self.assertEqual(penalty.fixed_seconds, 45.0)
+
+    def test_prompt_position_round_trips(self):
+        self.window.position_var.set("Bottom right")
+        self.window.save()
+        self.assertEqual(Config.load(self.path).general.prompt_position, "bottom_right")
+
+
+
+@unittest.skipUnless(HAVE_TK, "no Tk display")
+class FirstRunWindowTest(unittest.TestCase):
+    def setUp(self):
+        from unittest import mock
+
+        from ontask.ui.browser_setup import FirstRunWindow
+
+        patcher = mock.patch(
+            "ontask.ui.browser_setup.installed_browsers", return_value=list(INSTALLED)
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name) / "config.json"
+        Config().save(self.path)
+        self.root = tk.Tk()
+        self.root.withdraw()
+        self.addCleanup(self._destroy)
+        self.window = FirstRunWindow(self.root, self.path)
+
+    def _destroy(self):
+        try:
+            self.root.destroy()
+        except tk.TclError:
+            pass
+
+    def _edit_elsewhere(self):
+        # Settings saves a change while the picker is still open.
+        other = Config.load(self.path)
+        other.profile().approved.append("app:Figma")
+        other.save()
+
+    def test_continuing_keeps_changes_saved_meanwhile(self):
+        self._edit_elsewhere()
+        self.window.finish()
+        saved = Config.load(self.path)
+        self.assertIn("app:Figma", saved.profile().approved)
+        self.assertTrue(saved.setup_complete)
+
+    def test_closing_keeps_changes_saved_meanwhile(self):
+        self._edit_elsewhere()
+        self.window.answer(None)
+        saved = Config.load(self.path)
+        self.assertIn("app:Figma", saved.profile().approved)
+        self.assertTrue(saved.setup_complete)
+        self.assertEqual([b.bundle_id for b in saved.general.browsers], ["com.apple.Safari"])
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

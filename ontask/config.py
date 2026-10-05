@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .browsers import Browser, coerce as coerce_browser, default_browsers
+
 CONFIG_VERSION = 1
 
 
@@ -34,6 +36,21 @@ def default_config_path() -> Path:
 def _get(d: dict[str, Any], key: str, default: Any) -> Any:
     value = d.get(key, default)
     return default if value is None else value
+
+
+def _read_browsers(value: Any) -> list[Browser]:
+    """Load the browser list, tolerating the old list-of-names format.
+
+    Older configs stored display names only. Those are mapped back to bundle ids
+    where the name is one OnTask used to ship, so an existing setup keeps the
+    browsers it had; anything unrecognisable is dropped rather than guessed at.
+    """
+    browsers = []
+    for entry in value or []:
+        browser = coerce_browser(entry)
+        if browser is not None:
+            browsers.append(browser)
+    return browsers
 
 
 @dataclass
@@ -101,6 +118,62 @@ class NoResponse:
 
 
 @dataclass
+class ClockPenalty:
+    """Time taken off the session clock when a check-in is answered No.
+
+    A No means the stretch that just ended was not really work, so the clock
+    stops crediting it. With `match_situation` on, a No costs what that stretch
+    actually was: the blocked grace period, the off-task grace period, or
+    `approved_seconds` for a plain cadence check-in where nothing was off
+    limits. With it off, every No costs `fixed_seconds` instead.
+    """
+
+    enabled: bool = True
+    match_situation: bool = True
+    approved_seconds: float = 60.0
+    fixed_seconds: float = 60.0
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "ClockPenalty":
+        d = d or {}
+        base = cls()
+        return cls(
+            enabled=bool(_get(d, "enabled", base.enabled)),
+            match_situation=bool(_get(d, "match_situation", base.match_situation)),
+            approved_seconds=float(_get(d, "approved_seconds", base.approved_seconds)),
+            fixed_seconds=float(_get(d, "fixed_seconds", base.fixed_seconds)),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "match_situation": self.match_situation,
+            "approved_seconds": self.approved_seconds,
+            "fixed_seconds": self.fixed_seconds,
+        }
+
+    def normalize(self) -> None:
+        self.approved_seconds = max(0.0, float(self.approved_seconds))
+        self.fixed_seconds = max(0.0, float(self.fixed_seconds))
+
+    def seconds_for(self, kind: str, reminder: "ReminderSettings") -> float:
+        """How much a No costs, given which kind of check-in it answered.
+
+        `kind` is the engine's prompt kind: "cadence", "distraction" or
+        "blocked".
+        """
+        if not self.enabled:
+            return 0.0
+        if not self.match_situation:
+            return self.fixed_seconds
+        if kind == "blocked":
+            return reminder.disapproved_grace_seconds
+        if kind == "distraction":
+            return reminder.distraction_grace_seconds
+        return self.approved_seconds
+
+
+@dataclass
 class ReminderSettings:
     """The escalation ladder and the distraction timings.
 
@@ -115,6 +188,7 @@ class ReminderSettings:
     disapproved_grace_seconds: float = 10.0
     suggest_approve_after_yes: int = 3
     no_response: NoResponse = field(default_factory=NoResponse)
+    clock_penalty: ClockPenalty = field(default_factory=ClockPenalty)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "ReminderSettings":
@@ -133,6 +207,7 @@ class ReminderSettings:
                 _get(d, "suggest_approve_after_yes", base.suggest_approve_after_yes)
             ),
             no_response=NoResponse.from_dict(_get(d, "no_response", {})),
+            clock_penalty=ClockPenalty.from_dict(_get(d, "clock_penalty", {})),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -143,6 +218,7 @@ class ReminderSettings:
             "disapproved_grace_seconds": self.disapproved_grace_seconds,
             "suggest_approve_after_yes": self.suggest_approve_after_yes,
             "no_response": self.no_response.to_dict(),
+            "clock_penalty": self.clock_penalty.to_dict(),
         }
 
     def normalize(self) -> None:
@@ -158,6 +234,7 @@ class ReminderSettings:
         self.disapproved_grace_seconds = max(1.0, float(self.disapproved_grace_seconds))
         self.suggest_approve_after_yes = max(0, int(self.suggest_approve_after_yes))
         self.no_response.normalize()
+        self.clock_penalty.normalize()
 
 
 @dataclass
@@ -166,13 +243,26 @@ class GeneralSettings:
     prompt_ui: str = "window"  # window | notification | both
     start_session_on_launch: bool = False
     play_sound: bool = True
+    play_answer_sound: bool = True
     show_elapsed_in_menu_bar: bool = True
-    browsers: list[str] = field(
-        default_factory=lambda: ["Safari", "Google Chrome", "Arc", "Brave Browser", "Microsoft Edge"]
-    )
+    prompt_position: str = "center"
+    # Safari alone is configured out of the box. Everything else is added in
+    # Settings by picking its .app, which is what makes the bundle id and the
+    # URL-reading route right rather than guessed.
+    browsers: list[Browser] = field(default_factory=default_browsers)
     hotkeys: Hotkeys = field(default_factory=Hotkeys)
 
     PROMPT_UIS = ("window", "notification", "both")
+    # Where the floating check-in window sits on the screen it appears on.
+    PROMPT_POSITIONS = (
+        "center",
+        "top_left",
+        "top_center",
+        "top_right",
+        "bottom_left",
+        "bottom_center",
+        "bottom_right",
+    )
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "GeneralSettings":
@@ -185,10 +275,12 @@ class GeneralSettings:
                 _get(d, "start_session_on_launch", base.start_session_on_launch)
             ),
             play_sound=bool(_get(d, "play_sound", base.play_sound)),
+            play_answer_sound=bool(_get(d, "play_answer_sound", base.play_answer_sound)),
+            prompt_position=str(_get(d, "prompt_position", base.prompt_position)),
             show_elapsed_in_menu_bar=bool(
                 _get(d, "show_elapsed_in_menu_bar", base.show_elapsed_in_menu_bar)
             ),
-            browsers=[str(x) for x in _get(d, "browsers", base.browsers)],
+            browsers=_read_browsers(_get(d, "browsers", base.browsers)),
             hotkeys=Hotkeys.from_dict(_get(d, "hotkeys", {})),
         )
 
@@ -198,8 +290,10 @@ class GeneralSettings:
             "prompt_ui": self.prompt_ui,
             "start_session_on_launch": self.start_session_on_launch,
             "play_sound": self.play_sound,
+            "play_answer_sound": self.play_answer_sound,
+            "prompt_position": self.prompt_position,
             "show_elapsed_in_menu_bar": self.show_elapsed_in_menu_bar,
-            "browsers": self.browsers,
+            "browsers": [b.to_dict() for b in self.browsers],
             "hotkeys": self.hotkeys.to_dict(),
         }
 
@@ -207,6 +301,17 @@ class GeneralSettings:
         self.poll_seconds = min(30.0, max(0.5, float(self.poll_seconds)))
         if self.prompt_ui not in self.PROMPT_UIS:
             self.prompt_ui = "window"
+        if self.prompt_position not in self.PROMPT_POSITIONS:
+            self.prompt_position = "center"
+        # One entry per bundle id; adding the same app twice is a no-op.
+        seen: set[str] = set()
+        unique: list[Browser] = []
+        for browser in self.browsers:
+            key = browser.bundle_id or browser.name
+            if key and key not in seen:
+                seen.add(key)
+                unique.append(browser)
+        self.browsers = unique
 
 
 @dataclass
@@ -261,6 +366,9 @@ def default_profiles() -> list[Profile]:
 class Config:
     version: int = CONFIG_VERSION
     active_profile: str = "Deep Work"
+    # False until the first-run browser picker has been answered, so the picker
+    # is offered once rather than on every launch.
+    setup_complete: bool = False
     general: GeneralSettings = field(default_factory=GeneralSettings)
     reminder: ReminderSettings = field(default_factory=ReminderSettings)
     profiles: list[Profile] = field(default_factory=default_profiles)
@@ -275,6 +383,7 @@ class Config:
         cfg = cls(
             version=int(_get(d, "version", CONFIG_VERSION)),
             active_profile=str(_get(d, "active_profile", "")),
+            setup_complete=bool(_get(d, "setup_complete", False)),
             general=GeneralSettings.from_dict(_get(d, "general", {})),
             reminder=ReminderSettings.from_dict(_get(d, "reminder", {})),
             profiles=profiles or default_profiles(),
@@ -286,6 +395,7 @@ class Config:
         return {
             "version": self.version,
             "active_profile": self.active_profile,
+            "setup_complete": self.setup_complete,
             "general": self.general.to_dict(),
             "reminder": self.reminder.to_dict(),
             "profiles": [p.to_dict() for p in self.profiles],

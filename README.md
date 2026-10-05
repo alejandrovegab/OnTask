@@ -54,7 +54,12 @@ python3 -m venv .venv
 ./.venv/bin/python -m ontask
 ```
 
-A `*` and the session timer appear in the menu bar once a session is running.
+A `*` and the session timer appear in the menu bar once a session is running,
+counting every second.
+
+Launching OnTask while it is already running opens its Settings rather than
+starting a second copy. It runs as a menu bar accessory, so it has no Dock icon
+whether you run it from source or from a built bundle.
 
 ### macOS permissions
 
@@ -64,7 +69,7 @@ Check the current state any time from **Permissions...** in the menu.
 | Permission | Needed for | If refused |
 | --- | --- | --- |
 | **Automation** | Reading tabs in Safari and Chromium browsers. One prompt per browser. | That browser drops to app-level tracking. OnTask stops asking. |
-| **Accessibility** | Global hotkeys, and reading the Firefox address bar. | Hotkeys off, Firefox tracked app-level. Buttons still work. |
+| **Accessibility** | Global hotkeys, and reading the address bar in Gecko browsers (Firefox, Zen). | Hotkeys off, those browsers tracked app-level. Buttons still work. |
 | **Notifications** | Banner check-ins with Yes/No buttons. | Falls back to the floating window, and says so once. |
 
 Notification permission is only ever requested if you actually select a
@@ -110,19 +115,76 @@ e.g. `<ctrl>+<alt>+f`.
 
 ### Browsers
 
-Two different mechanisms, because Firefox does not support the first:
+On first launch OnTask asks which browsers you use, listing the ones macOS
+reports as installed with their own icons. Change the answer at any time in
+**Settings → General**, and use **Add from Finder...** there for a browser that
+is not detected. **Safari is the only one enabled if you skip the question.**
+
+Identifying a browser by its app rather than by a typed name is the point:
+OnTask reads the
+`CFBundleIdentifier` and display name straight out of the bundle, then matches
+the frontmost app on that bundle id. Names are not reliable identity — Zen is
+called `Zen` but its process reports `zen` — so id matching is what makes
+tracking work for it. It also survives the app being renamed or moved.
+
+Picking the app also decides *how* the URL is read, from the bundle's own
+contents rather than a hardcoded list:
 
 - **Safari and the Chromium family** (Chrome, Arc, Brave, Edge, Vivaldi, Opera,
-  Dia) are read with AppleScript. Exact, cheap, and gives the real tab URL.
-- **Firefox and other Gecko browsers** (Firefox Developer Edition, Zen,
-  LibreWolf) expose no AppleScript URL, so OnTask walks the accessibility tree
-  to read the address bar. This is best effort: it depends on the browser's
-  internal view hierarchy and can break across releases. When it fails, that
-  browser falls back to app-level tracking rather than erroring.
+  Dia) are read with AppleScript, addressed by bundle id. Exact, cheap, and
+  gives the real tab URL.
+- **Firefox and other Gecko browsers** (Zen, LibreWolf, Floorp, Waterfox, Tor,
+  Mullvad) expose no AppleScript URL, so OnTask walks the accessibility tree to
+  read the address bar. Any Gecko fork is recognised by the `application.ini`
+  in its bundle, so a browser OnTask has never heard of still lands on the
+  right route. This is best effort: it depends on the browser's internal view
+  hierarchy and can break across releases. When it fails, that browser falls
+  back to app-level tracking rather than erroring.
+- **Anything else scriptable** is probed once on first use — both AppleScript
+  dialects are tried and whichever answers is remembered for the rest of the
+  run.
+- **An app with no way to read its tab** is still addable, after a warning; it
+  is tracked at app level only.
 
 Address bar text that is not a URL — a half-typed search, `about:blank` — is
-ignored rather than guessed at. Turn any browser off in Settings → General to
-skip URL tracking for it entirely.
+ignored rather than guessed at. Remove a browser from the list in
+Settings → General to stop URL tracking for it entirely.
+
+### The check-in window
+
+The floating window sizes itself to the question, so a long domain name wraps
+rather than being clipped, and it follows the system light and dark themes.
+
+- **It gives focus back.** The window has to take focus for `Y` and `N` to work,
+  so OnTask remembers the app that was in front and returns you to it once the
+  check-in is answered.
+- **It confirms the answer.** Whichever way you answer - button, hotkey or
+  notification - the matching button lights up briefly before the window goes,
+  optionally with a sound. Answers apply the moment you press the key rather
+  than at the next poll.
+- **It can sit anywhere.** Centre by default, or any corner, or top or bottom
+  middle, from Settings → General.
+
+Sounds are separate settings: one for the check-in appearing, one for answering.
+
+### Statistics
+
+**Statistics...** in the menu opens a report over all time, the last 30 or 7
+days, or today:
+
+- time in sessions, how many, and the average length, broken down by profile;
+- time spent off task, how much of that was on blocked apps and sites, and what
+  share of your session time it came to;
+- check-ins answered yes, no, and ignored, and how many were followed by a
+  return to approved work within two minutes;
+- which apps and sites pull you away the most;
+- which hour of the day you stay on task best and which you lose most time in;
+- a chart of session time against off-task time per day, which is where a trend
+  in either direction shows up.
+
+Everything is derived from an event log in `stats.json`, kept beside
+`config.json` and capped at 20,000 events. **Reset statistics** in that window
+clears it.
 
 ### Rules
 
@@ -141,6 +203,15 @@ One per line, in either list:
 The **most specific matching rule wins**, so approving `github.com` while
 blocking `github.com/trending` does what you would expect. On a tie, the block
 list wins. Approving a browser itself (`app:Safari`) approves every tab in it.
+
+### Answering No
+
+A No means the stretch that just ended was not really work, so by default that
+time comes back off the session clock - as much as the stretch actually was:
+the blocked wait on a blocked site, the off-task wait on something unapproved,
+or a minute on an approved one. Turn it off, or charge a flat amount instead,
+under **Settings → Reminders → When you answer No**. The clock stops at zero
+rather than going negative.
 
 ### Profiles
 
@@ -168,11 +239,18 @@ changes within one poll, no restart needed.
 | `no_response.policy` | `renag_then_no` | Or `wait`, or `pause_session`. |
 | `no_response.renag_seconds` | `60` | Gap between re-alerts. |
 | `no_response.max_alerts` | `3` | Alerts before it counts as a no. |
+| `clock_penalty.enabled` | `true` | Take time off the session clock when you answer No. |
+| `clock_penalty.match_situation` | `true` | Take off as much as the stretch you were in: the blocked wait on a blocked site, the off-task wait on something unapproved, `approved_seconds` on an approved one. |
+| `clock_penalty.approved_seconds` | `60` | Taken off for a No during a normal cadence check-in. |
+| `clock_penalty.fixed_seconds` | `60` | Taken off for every No when `match_situation` is off. |
 | `poll_seconds` | `2.0` | How often the frontmost window is sampled. |
 | `prompt_ui` | `window` | Or `notification` (banner with Yes/No buttons), or `both` (banner, escalating to the window if ignored). |
-| `browsers` | Safari, Chrome, Arc, Brave, Edge, Firefox | Which browsers get URL tracking. |
+| `browsers` | Safari only | Browsers that get URL tracking. Each entry records `name`, `bundle_id`, `flavour` and `app_path`; add more from Finder in Settings. |
 | `start_session_on_launch` | `false` | Begin a session at startup. |
-| `play_sound` | `true` | Sound with each check-in. |
+| `play_sound` | `true` | Sound when a check-in appears. |
+| `play_answer_sound` | `true` | Sound when you answer one. |
+| `prompt_position` | `center` | Or `top_left`, `top_center`, `top_right`, `bottom_left`, `bottom_center`, `bottom_right`. |
+| `setup_complete` | `false` | Set once the first-run browser picker has been answered. |
 | `show_elapsed_in_menu_bar` | `true` | Show the timer in the menu bar. |
 
 Bad values are clamped rather than rejected, and a corrupt config is moved aside
@@ -184,7 +262,7 @@ to `config.json.bad` so the app still starts.
 | --- | --- | --- | --- |
 | Shell | Menu bar | Control window | Control window |
 | App tracking | NSWorkspace | Win32 API | `xdotool` |
-| Tab URLs | Safari, Chromium browsers, Firefox | not available | not available |
+| Tab URLs | Safari, Chromium browsers, Gecko browsers | not available | not available |
 | Check-in | Floating panel or notification | Window | Window |
 
 Where focus detection is unavailable, OnTask treats the target as on-task and
@@ -193,7 +271,7 @@ falls back to plain ladder reminders rather than nagging.
 ## Development
 
 ```sh
-./.venv/bin/python -m unittest discover -s tests   # 82 tests, fake clock, instant
+./.venv/bin/python -m unittest discover -s tests   # 131 tests, fake clock, instant
 ./.venv/bin/python -m ontask --headless            # watch focus detection live
 ./.venv/bin/python -m ontask --settings            # settings window on its own
 ```
@@ -208,11 +286,15 @@ ontask/
   engine.py      the state machine (no UI, no OS calls, fake-clock testable)
   app.py         controller wiring engine to a UI shell
   hotkeys.py     pynput hotkeys, marshalled onto the UI thread
-  browsers.py    browser catalogue
+  browsers.py    browser identity: bundle inspection and URL-route detection
+  stats.py       the event log behind the statistics window
+  ipc.py         single-instance lock and nudges between the app and its windows
   focus/         macos.py (NSWorkspace + AppleScript), ax.py (accessibility
                  address bar), fallback.py (Win32/xdotool)
   ui/            menubar_macos.py, prompt_macos.py, notify_macos.py,
-                 app_tk.py, prompt_tk.py, settings_app.py
+                 app_tk.py, prompt_tk.py, settings_app.py, stats_app.py,
+                 browser_setup.py (picker + first run), app_icons.py,
+                 tk_window.py
 ```
 
 `engine.py` holds every timing rule and touches nothing platform-specific, which

@@ -8,7 +8,11 @@ delivered must never leave a question the user has no way to answer.
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import objc
 import rumps
+from Foundation import NSObject
 
 from ..app import Controller
 from ..engine import IDLE, PAUSED, RUNNING, ActivePrompt, format_duration
@@ -18,11 +22,40 @@ from .prompt_macos import PromptWindow
 
 STATUS_SLOTS = ("session", "profile", "interval", "next", "focus")
 
+# The menu bar clock is redrawn on its own timer. Tying it to the focus poll
+# made the seconds jump in whatever step `poll_seconds` happened to be.
+CLOCK_SECONDS = 1.0
+
+
+class _Waker(NSObject):
+    """Hops a background thread's request onto the main thread.
+
+    Global hotkeys arrive on pynput's listener thread, and AppKit may only be
+    touched from the main one, so the callback is bounced rather than run where
+    it lands.
+    """
+
+    def initWithCallback_(self, callback):
+        self = objc.super(_Waker, self).init()
+        if self is None:
+            return None
+        self._callback = callback
+        return self
+
+    def wake(self) -> None:
+        self.performSelectorOnMainThread_withObject_waitUntilDone_("fire:", None, False)
+
+    def fire_(self, _ignored):
+        try:
+            self._callback()
+        except Exception:
+            pass
+
 
 class OnTaskApp(rumps.App):
-    def __init__(self) -> None:
+    def __init__(self, config_path: Path | None = None) -> None:
         super().__init__("OnTask", title="OnTask", quit_button=None)
-        self.controller = Controller(shell=self)
+        self.controller = Controller(shell=self, config_path=config_path)
         self.prompt = PromptWindow(self._on_answer)
         self.notifier = Notifier(self._on_answer)
         self.hotkeys = HotkeyManager(self.controller)
@@ -30,11 +63,19 @@ class OnTaskApp(rumps.App):
         self._profile_items: dict[str, rumps.MenuItem] = {}
         self._warned_notifications = False
         self._poll_seconds = self.controller.config.general.poll_seconds
+        self._waker = _Waker.alloc().initWithCallback_(self._wake)
+        self.controller.set_wake_hook(self._waker.wake)
         self._build_menu()
         self.hotkeys.start()
         self.refresh()
         self.timer = rumps.Timer(self._tick, self._poll_seconds)
         self.timer.start()
+        if not self.controller.config.setup_complete:
+            self.controller.open_first_run()
+        # A second, faster timer keeps the clock ticking every second without
+        # sampling the frontmost window that often.
+        self.clock_timer = rumps.Timer(self._clock_tick, CLOCK_SECONDS)
+        self.clock_timer.start()
 
     # -- menu -------------------------------------------------------------
 
@@ -56,6 +97,7 @@ class OnTaskApp(rumps.App):
             self.block_item,
             None,
             rumps.MenuItem("Settings...", callback=self._settings),
+            rumps.MenuItem("Statistics...", callback=self._statistics),
             rumps.MenuItem("Permissions...", callback=self._permissions),
             rumps.MenuItem("Quit OnTask", callback=self._quit),
         ]
@@ -89,6 +131,9 @@ class OnTaskApp(rumps.App):
     def _settings(self, _sender) -> None:
         self.controller.open_settings()
 
+    def _statistics(self, _sender) -> None:
+        self.controller.open_stats()
+
     def _permissions(self, _sender) -> None:
         rumps.alert(title="OnTask permissions", message=self.permissions_report(), ok="Done")
 
@@ -97,10 +142,20 @@ class OnTaskApp(rumps.App):
 
     def _quit(self, _sender) -> None:
         self.hotkeys.stop()
+        self.controller.shutdown()
         rumps.quit_application()
 
     def _tick(self, _timer) -> None:
         self.controller.poll()
+        self.refresh()
+
+    def _clock_tick(self, _timer) -> None:
+        """Redraw only. The engine is not advanced here; `poll` owns timing."""
+        self.refresh()
+
+    def _wake(self) -> None:
+        """Run queued hotkey actions at once, on the main thread."""
+        self.controller.wake()
         self.refresh()
 
     def _on_answer(self, yes: bool) -> None:
@@ -141,24 +196,31 @@ class OnTaskApp(rumps.App):
 
     def show_prompt(self, prompt: ActivePrompt, controller: Controller) -> None:
         self._pending = prompt
-        sound = controller.config.general.play_sound
-        mode = self._effective_mode(controller.config.general.prompt_ui)
+        general = controller.config.general
+        mode = self._effective_mode(general.prompt_ui)
         if mode in ("notification", "both"):
-            self.notifier.show("OnTask", prompt.question(), actionable=True, sound=sound)
+            self.notifier.show("OnTask", prompt.question(), actionable=True, sound=general.play_sound)
         else:
-            self.prompt.show(prompt.question(), self._subtitle(prompt), sound)
+            self.prompt.show(
+                prompt.question(), self._subtitle(prompt), general.play_sound, general.prompt_position
+            )
 
     def realert(self, prompt: ActivePrompt) -> None:
-        sound = self.controller.config.general.play_sound
-        mode = self._effective_mode(self.controller.config.general.prompt_ui)
+        general = self.controller.config.general
+        mode = self._effective_mode(general.prompt_ui)
         if mode == "notification":
-            self.notifier.show("OnTask", prompt.question(), actionable=True, sound=sound)
+            self.notifier.show("OnTask", prompt.question(), actionable=True, sound=general.play_sound)
             return
         # "both" deliberately escalates: banner first, then the window.
         if not self.prompt.visible:
-            self.prompt.show(prompt.question(), self._subtitle(prompt), sound)
+            self.prompt.show(
+                prompt.question(), self._subtitle(prompt), general.play_sound, general.prompt_position
+            )
         else:
-            self.prompt.realert(self._subtitle(prompt), sound)
+            self.prompt.realert(self._subtitle(prompt), general.play_sound, general.prompt_position)
+
+    def answer_feedback(self, yes: bool) -> None:
+        self.prompt.flash_answer(yes, self.controller.config.general.play_answer_sound)
 
     def close_prompt(self) -> None:
         self._pending = None
@@ -184,7 +246,7 @@ class OnTaskApp(rumps.App):
             controller.add_rule(rule, "approved")
 
     def refresh(self) -> None:
-        snap = self.controller.engine.snapshot()
+        snap = self.controller.snapshot()
         general = self.controller.config.general
         if general.show_elapsed_in_menu_bar and snap.phase != IDLE:
             self.title = f"{'*' if snap.phase == RUNNING else '||'} {format_duration(snap.elapsed_seconds)}"
@@ -244,9 +306,79 @@ class OnTaskApp(rumps.App):
         return "\n".join(lines)
 
     def _subtitle(self, prompt: ActivePrompt) -> str:
-        snap = self.controller.engine.snapshot()
+        snap = self.controller.snapshot()
         return f"{snap.profile} - {format_duration(snap.elapsed_seconds)} elapsed"
 
 
-def run() -> None:
-    OnTaskApp().run()
+def _hide_dock_icon() -> None:
+    """Run as a menu bar accessory, with no Dock tile or app switcher entry.
+
+    A built bundle gets this from LSUIElement in its Info.plist; setting it at
+    runtime means running from source behaves the same instead of showing a
+    stray Python icon.
+    """
+    try:
+        from AppKit import NSApplication, NSApplicationActivationPolicyAccessory
+
+        NSApplication.sharedApplication().setActivationPolicy_(
+            NSApplicationActivationPolicyAccessory
+        )
+    except Exception:
+        pass
+
+
+def _running_app():
+    return getattr(rumps.App, "*app_instance", None)
+
+
+def _install_delegate() -> None:
+    """Add reopen and terminate handling to rumps' application delegate.
+
+    Two things AppKit tells the delegate that OnTask needs:
+
+    * a *reopen*, which is what launching an already-running app produces -
+      macOS never starts a second copy of a bundled app, so this is the only
+      way a Spotlight launch can reach the instance that is running;
+    * a *terminate*, which is how logging out or restarting asks apps to stop,
+      and the last chance to bank the session that is still going.
+
+    Signals are not an option here: under NSApplication.run() a Python-level
+    SIGTERM handler is never invoked, whichever thread installs it.
+
+    rumps builds its delegate from a module-level class, so substituting a
+    subclass adds both without forking rumps.
+    """
+    try:
+        base = rumps.rumps.NSApp
+    except Exception:
+        return
+
+    class OnTaskNSApp(base):
+        def applicationShouldHandleReopen_hasVisibleWindows_(self, sender, has_windows):
+            app = _running_app()
+            if app is not None:
+                try:
+                    app.controller.open_settings()
+                except Exception:
+                    pass
+            return True
+
+        def applicationWillTerminate_(self, notification):
+            app = _running_app()
+            if app is not None:
+                try:
+                    app.hotkeys.stop()
+                    app.controller.shutdown()
+                except Exception:
+                    pass
+
+    try:
+        rumps.rumps.NSApp = OnTaskNSApp
+    except Exception:
+        pass
+
+
+def run(config_path: Path | None = None) -> None:
+    _hide_dock_icon()
+    _install_delegate()
+    OnTaskApp(config_path).run()

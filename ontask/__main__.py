@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -28,19 +29,38 @@ def main(argv: list[str] | None = None) -> int:
 
         return headless_run(args.config)
 
-    if sys.platform == "darwin":
-        try:
-            from .ui.menubar_macos import run as mac_run
-        except ImportError as exc:
-            print(f"Menu bar shell unavailable ({exc}); falling back to the window shell.", file=sys.stderr)
-        else:
-            mac_run()
-            return 0
+    from . import ipc
 
-    from .ui.app_tk import run as tk_run
+    # One OnTask per machine. Launching it again - from Spotlight, the Dock, a
+    # second terminal - is a request to see the app that is already running,
+    # not to start a rival copy with its own timers.
+    config_path = Path(args.config).expanduser() if args.config else None
+    directory = ipc.runtime_dir(config_path)
+    lock = ipc.Lock(directory)
+    if not lock.acquire():
+        ipc.Signal(directory, ipc.OPEN_SETTINGS).send()
+        print("OnTask is already running; opening its settings.")
+        return 0
 
-    tk_run()
-    return 0
+    try:
+        if sys.platform == "darwin":
+            try:
+                from .ui.menubar_macos import run as mac_run
+            except ImportError as exc:
+                print(
+                    f"Menu bar shell unavailable ({exc}); falling back to the window shell.",
+                    file=sys.stderr,
+                )
+            else:
+                mac_run(config_path)
+                return 0
+
+        from .ui.app_tk import run as tk_run
+
+        tk_run(config_path)
+        return 0
+    finally:
+        lock.release()
 
 
 if __name__ == "__main__":
