@@ -72,8 +72,8 @@ class Ladder:
             return f"{mins} min (max)"
         remaining = max(0, self.yes_needed() - self.yes_at_rung)
         nxt = _fmt(self.intervals_minutes[self.rung + 1])
-        plural = "" if remaining == 1 else "s"
-        return f"{mins} min - {remaining} more yes{'' if remaining == 1 else 'es'} to reach {nxt} min"
+        yeses = "yes" if remaining == 1 else "yeses"
+        return f"{mins} min - {remaining} more {yeses} to reach {nxt} min"
 
 
 def _fmt(value: float) -> str:

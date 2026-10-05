@@ -16,11 +16,10 @@ from tkinter import messagebox, ttk
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from ontask import ipc  # noqa: E402
 from ontask.config import ClockPenalty, Config, NoResponse, Profile  # noqa: E402
-from ontask.ladder import Ladder  # noqa: E402
 from ontask.ui.browser_setup import BrowserList  # noqa: E402
 from ontask.ui.tk_window import bring_to_front, watch_raise  # noqa: E402
-from ontask import ipc  # noqa: E402
 
 RULE_HELP = (
     "One rule per line.   app:Slack   site:github.com   site:*.google.com   "
@@ -344,7 +343,6 @@ class SettingsWindow:
         if not intervals:
             self.ladder_preview.config(text="Add at least one interval.", foreground="#b00")
             return
-        ladder = Ladder(intervals_minutes=intervals, advance_after_yes=advance or [1])
         parts = []
         for rung, value in enumerate(intervals):
             parts.append(f"{_fmt(value)} min")

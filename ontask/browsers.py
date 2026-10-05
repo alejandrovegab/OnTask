@@ -64,7 +64,7 @@ class Browser:
     app_path: str = ""
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "Browser | None":
+    def from_dict(cls, d: dict[str, Any]) -> Browser | None:
         d = d or {}
         bundle_id = str(d.get("bundle_id") or "").strip()
         name = str(d.get("name") or "").strip()

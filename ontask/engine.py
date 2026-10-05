@@ -19,7 +19,7 @@ another base interval, per the spec.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from .config import Config
 from .focus import UNKNOWN, FocusTarget

@@ -13,7 +13,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .browsers import Browser, coerce as coerce_browser, default_browsers
+from .browsers import Browser, default_browsers
+from .browsers import coerce as coerce_browser
 
 CONFIG_VERSION = 2
 
@@ -80,7 +81,7 @@ class Hotkeys:
     answer_no: str = "<ctrl>+<alt>+<cmd>+n"
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "Hotkeys":
+    def from_dict(cls, d: dict[str, Any]) -> Hotkeys:
         d = d or {}
         return cls(
             toggle_session=str(_get(d, "toggle_session", cls.toggle_session)),
@@ -113,7 +114,7 @@ class NoResponse:
     POLICIES = ("renag_then_no", "wait", "pause_session")
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "NoResponse":
+    def from_dict(cls, d: dict[str, Any]) -> NoResponse:
         d = d or {}
         return cls(
             policy=str(_get(d, "policy", cls.policy)),
@@ -152,7 +153,7 @@ class ClockPenalty:
     fixed_seconds: float = 60.0
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "ClockPenalty":
+    def from_dict(cls, d: dict[str, Any]) -> ClockPenalty:
         d = d or {}
         base = cls()
         return cls(
@@ -174,7 +175,7 @@ class ClockPenalty:
         self.approved_seconds = max(0.0, float(self.approved_seconds))
         self.fixed_seconds = max(0.0, float(self.fixed_seconds))
 
-    def seconds_for(self, kind: str, reminder: "ReminderSettings") -> float:
+    def seconds_for(self, kind: str, reminder: ReminderSettings) -> float:
         """How much a No costs, given which kind of check-in it answered.
 
         `kind` is the engine's prompt kind: "cadence", "distraction" or
@@ -209,7 +210,7 @@ class ReminderSettings:
     clock_penalty: ClockPenalty = field(default_factory=ClockPenalty)
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "ReminderSettings":
+    def from_dict(cls, d: dict[str, Any]) -> ReminderSettings:
         d = d or {}
         base = cls()
         return cls(
@@ -283,7 +284,7 @@ class GeneralSettings:
     )
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "GeneralSettings":
+    def from_dict(cls, d: dict[str, Any]) -> GeneralSettings:
         d = d or {}
         base = cls()
         return cls(
@@ -345,7 +346,7 @@ class Profile:
     disapproved: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "Profile":
+    def from_dict(cls, d: dict[str, Any]) -> Profile:
         d = d or {}
         return cls(
             name=str(_get(d, "name", "Untitled")),
@@ -395,7 +396,7 @@ class Config:
     # -- persistence ------------------------------------------------------
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "Config":
+    def from_dict(cls, d: dict[str, Any]) -> Config:
         d = _migrate(d or {})
         profiles = [Profile.from_dict(p) for p in _get(d, "profiles", [])]
         cfg = cls(
@@ -420,7 +421,7 @@ class Config:
         }
 
     @classmethod
-    def load(cls, path: Path | None = None) -> "Config":
+    def load(cls, path: Path | None = None) -> Config:
         """Read config from disk, falling back to defaults on a missing or bad file."""
         path = Path(path) if path else default_config_path()
         try:

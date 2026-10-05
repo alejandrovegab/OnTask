@@ -11,7 +11,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from ..app import Controller, Shell
-from ..engine import IDLE, PAUSED, RUNNING, ActivePrompt
+from ..engine import IDLE, PAUSED, ActivePrompt
 from ..hotkeys import HotkeyManager
 from .prompt_tk import TkPrompt
 

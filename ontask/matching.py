@@ -30,7 +30,7 @@ class Rule:
     raw: str
 
     @classmethod
-    def parse(cls, text: str) -> "Rule | None":
+    def parse(cls, text: str) -> Rule | None:
         raw = (text or "").strip()
         if not raw or raw.startswith("#"):
             return None

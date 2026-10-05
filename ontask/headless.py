@@ -9,7 +9,6 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from . import engine as eng
 from .app import Controller, Shell
 
 

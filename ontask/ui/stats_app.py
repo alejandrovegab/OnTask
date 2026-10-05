@@ -23,7 +23,7 @@ from tkinter import messagebox, ttk
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from ontask import ipc  # noqa: E402
-from ontask.stats import Stats, Summary, format_hour, format_span, default_stats_path  # noqa: E402
+from ontask.stats import Stats, Summary, default_stats_path, format_hour, format_span  # noqa: E402
 from ontask.ui.tk_window import bring_to_front, watch_raise  # noqa: E402
 
 DAY = 86400.0
