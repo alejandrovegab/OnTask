@@ -8,7 +8,11 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
+
+if TYPE_CHECKING:
+    from ..browsers import Browser
 
 
 @dataclass(frozen=True)
@@ -60,7 +64,7 @@ UNKNOWN = FocusTarget()
 class FocusProvider:
     """Interface for platform focus detection."""
 
-    def current(self, browsers: list[str] | None = None) -> FocusTarget:  # pragma: no cover
+    def current(self, browsers: list[Browser] | None = None) -> FocusTarget:  # pragma: no cover
         raise NotImplementedError
 
     def close(self) -> None:

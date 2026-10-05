@@ -243,13 +243,9 @@ class OnTaskApp(rumps.App):
             self.notifier.show(title, message, actionable=False, sound=False)
 
     def ask_add_rule(self, target, rule: str, controller: Controller) -> None:
-        profile = controller.config.active_profile
         response = rumps.alert(
             title="Add to approved list?",
-            message=(
-                f"You've said you're on task in {target.describe()} three times.\n\n"
-                f"Add {rule} to the approved list for {profile}?"
-            ),
+            message=controller.suggestion_message(target, rule),
             ok="Add",
             cancel="Not now",
         )

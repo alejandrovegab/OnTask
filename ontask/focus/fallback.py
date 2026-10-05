@@ -11,8 +11,12 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from typing import TYPE_CHECKING
 
 from . import FocusProvider, FocusTarget
+
+if TYPE_CHECKING:
+    from ..browsers import Browser
 
 
 class FallbackFocusProvider(FocusProvider):
@@ -23,7 +27,7 @@ class FallbackFocusProvider(FocusProvider):
         elif shutil.which("xdotool"):
             self._impl = _xdotool_target
 
-    def current(self, browsers: list[str] | None = None) -> FocusTarget:
+    def current(self, browsers: list[Browser] | None = None) -> FocusTarget:
         if self._impl is None:
             return FocusTarget()
         try:

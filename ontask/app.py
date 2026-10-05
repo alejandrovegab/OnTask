@@ -231,6 +231,14 @@ class Controller:
         self.engine.apply_config(self.config)
         self.shell.refresh()
 
+    def suggestion_message(self, target: FocusTarget, rule: str) -> str:
+        """The question asked when offering to approve `target`."""
+        count = self.config.reminder.suggest_approve_after_yes
+        return (
+            f"You've said you're on task in {target.describe()} {_times(count)}.\n\n"
+            f"Add {rule} to the approved list for {self.config.active_profile}?"
+        )
+
     def approve_current(self) -> None:
         if not self.target.is_unknown:
             rule = suggest_rule(self.target)
@@ -334,6 +342,10 @@ class Controller:
         profile = self.config.profile()
         status = classify(self.target, profile.approved, profile.disapproved).status
         return f"{self.target.describe()} - {status}"
+
+
+def _times(count: int) -> str:
+    return {1: "once", 2: "twice"}.get(count, f"{count} times")
 
 
 def _fmt(value: float) -> str:
