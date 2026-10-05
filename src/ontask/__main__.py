@@ -47,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if sys.platform == "darwin":
             try:
-                from .ui.menubar_macos import run as mac_run
+                from .platform.macos.menubar import run as mac_run
             except ImportError as exc:
                 print(
                     f"Menu bar shell unavailable ({exc}); falling back to the window shell.",

@@ -34,7 +34,7 @@ from ontask.core.browsers import (  # noqa: E402
     installed_browsers,
 )
 from ontask.core.config import Config  # noqa: E402
-from ontask.ui.app_icons import icon_base64  # noqa: E402
+from ontask.platform.macos.icons import icon_base64  # noqa: E402
 from ontask.ui.tk_window import bring_to_front, watch_raise  # noqa: E402
 
 ROUTE_NOTES = {

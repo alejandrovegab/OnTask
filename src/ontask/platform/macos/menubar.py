@@ -14,11 +14,11 @@ import objc
 import rumps
 from Foundation import NSObject
 
-from ..app import Controller
-from ..core.engine import IDLE, PAUSED, RUNNING, ActivePrompt, format_duration
-from ..hotkeys import HotkeyManager
-from .notify_macos import NOT_DETERMINED, Notifier
-from .prompt_macos import PromptWindow
+from ...app import Controller
+from ...core.engine import IDLE, PAUSED, RUNNING, ActivePrompt, format_duration
+from ...hotkeys import HotkeyManager
+from .notify import NOT_DETERMINED, Notifier
+from .prompt import PromptWindow
 
 STATUS_SLOTS = ("session", "profile", "interval", "next", "focus")
 
@@ -300,7 +300,7 @@ class OnTaskApp(rumps.App):
     # -- diagnostics ------------------------------------------------------
 
     def permissions_report(self) -> str:
-        from ..focus.ax import accessibility_trusted
+        from .ax import accessibility_trusted
 
         lines = [
             f"Notifications: {self.notifier.status_text()}",

@@ -21,7 +21,7 @@ except Exception:
 @unittest.skipUnless(HAVE_MAC_UI, "macOS UI stack not installed")
 class NotifierTest(unittest.TestCase):
     def test_missing_framework_is_reported_not_raised(self):
-        from ontask.ui import notify_macos
+        from ontask.platform.macos import notify as notify_macos
 
         with mock.patch.object(notify_macos, "HAVE_USER_NOTIFICATIONS", False):
             notifier = notify_macos.Notifier(lambda yes: None, auto_query=False)
@@ -30,7 +30,7 @@ class NotifierTest(unittest.TestCase):
         self.assertIn("unavailable", notifier.status_text())
 
     def test_availability_follows_authorisation_status(self):
-        from ontask.ui.notify_macos import (
+        from ontask.platform.macos.notify import (
             AUTHORIZED,
             DENIED,
             NOT_DETERMINED,
@@ -54,13 +54,13 @@ class NotifierTest(unittest.TestCase):
         self.assertIn("denied", notifier.status_text())
 
     def test_withdraw_is_safe_with_nothing_delivered(self):
-        from ontask.ui.notify_macos import Notifier
+        from ontask.platform.macos.notify import Notifier
 
         notifier = Notifier(lambda yes: None, auto_query=False)
         notifier.withdraw()  # must not raise
 
     def test_request_authorization_only_fires_once(self):
-        from ontask.ui.notify_macos import Notifier
+        from ontask.platform.macos.notify import Notifier
 
         notifier = Notifier(lambda yes: None, auto_query=False)
         if notifier._center is None:
@@ -74,7 +74,7 @@ class NotifierTest(unittest.TestCase):
 
     def test_completion_handlers_are_retained(self):
         """An unreferenced block firing on a background queue segfaults."""
-        from ontask.ui.notify_macos import Notifier
+        from ontask.platform.macos.notify import Notifier
 
         notifier = Notifier(lambda yes: None, auto_query=False)
         if notifier._center is None:
@@ -88,7 +88,7 @@ class NotifierTest(unittest.TestCase):
 @unittest.skipUnless(HAVE_MAC_UI, "macOS UI stack not installed")
 class NotificationDelegateTest(unittest.TestCase):
     def _delegate(self, answers):
-        from ontask.ui.notify_macos import _Delegate
+        from ontask.platform.macos.notify import _Delegate
 
         return _Delegate.alloc().initWithCallback_(answers.append)
 
@@ -102,7 +102,7 @@ class NotificationDelegateTest(unittest.TestCase):
         return done
 
     def test_yes_button_answers_yes(self):
-        from ontask.ui.notify_macos import ACTION_YES
+        from ontask.platform.macos.notify import ACTION_YES
 
         answers = []
         done = self._respond(self._delegate(answers), ACTION_YES, answers)
@@ -110,7 +110,7 @@ class NotificationDelegateTest(unittest.TestCase):
         self.assertEqual(done, [True])
 
     def test_no_button_answers_no(self):
-        from ontask.ui.notify_macos import ACTION_NO
+        from ontask.platform.macos.notify import ACTION_NO
 
         answers = []
         done = self._respond(self._delegate(answers), ACTION_NO, answers)
@@ -126,7 +126,7 @@ class NotificationDelegateTest(unittest.TestCase):
         self.assertEqual(done, [True], "the completion handler must still run")
 
     def test_completion_handler_runs_even_if_callback_raises(self):
-        from ontask.ui.notify_macos import ACTION_YES, _Delegate
+        from ontask.platform.macos.notify import ACTION_YES, _Delegate
 
         def boom(_yes):
             raise RuntimeError("controller exploded")
@@ -148,7 +148,7 @@ class PromptRoutingTest(unittest.TestCase):
 
     def setUp(self):
         from ontask.core.config import Config
-        from ontask.ui.menubar_macos import OnTaskApp
+        from ontask.platform.macos.menubar import OnTaskApp
 
         self.tmp = tempfile.TemporaryDirectory()
         path = Path(self.tmp.name) / "config.json"
@@ -196,7 +196,7 @@ class PromptRoutingTest(unittest.TestCase):
         self.app.prompt.show.assert_not_called()
 
     def test_denied_notifications_fall_back_to_the_window(self):
-        from ontask.ui.notify_macos import DENIED
+        from ontask.platform.macos.notify import DENIED
 
         self._set_mode("notification")
         self.app.notifier.status = DENIED
@@ -219,7 +219,7 @@ class PromptRoutingTest(unittest.TestCase):
         self.assertEqual(alert.call_count, 1)
 
     def test_undecided_permission_prompts_but_still_shows_the_window(self):
-        from ontask.ui.notify_macos import NOT_DETERMINED
+        from ontask.platform.macos.notify import NOT_DETERMINED
 
         self._set_mode("notification")
         self.app.notifier.status = NOT_DETERMINED
@@ -263,7 +263,7 @@ class PromptRoutingTest(unittest.TestCase):
 @unittest.skipUnless(HAVE_MAC_UI, "macOS UI stack not installed")
 class PromptFocusHandoverTest(unittest.TestCase):
     def _window_with_previous_app(self):
-        from ontask.ui.prompt_macos import PromptWindow
+        from ontask.platform.macos.prompt import PromptWindow
 
         window = PromptWindow(lambda yes: None)
         previous = mock.Mock()
@@ -273,7 +273,7 @@ class PromptFocusHandoverTest(unittest.TestCase):
 
     def test_focus_returns_to_the_app_that_was_in_front(self):
         window, previous = self._window_with_previous_app()
-        with mock.patch("ontask.ui.prompt_macos.NSApp") as app:
+        with mock.patch("ontask.platform.macos.prompt.NSApp") as app:
             app.isActive.return_value = True
             window._restore_front_app()
         previous.activateWithOptions_.assert_called_once()
@@ -282,7 +282,7 @@ class PromptFocusHandoverTest(unittest.TestCase):
         # The user switched to another app while the check-in was up, then
         # answered with a hotkey: they must stay where they are.
         window, previous = self._window_with_previous_app()
-        with mock.patch("ontask.ui.prompt_macos.NSApp") as app:
+        with mock.patch("ontask.platform.macos.prompt.NSApp") as app:
             app.isActive.return_value = False
             window._restore_front_app()
         previous.activateWithOptions_.assert_not_called()

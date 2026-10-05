@@ -185,7 +185,7 @@ class FocusTargetTest(unittest.TestCase):
 @unittest.skipUnless(HAVE_PYOBJC, "PyObjC not installed")
 class MacFocusProviderTest(unittest.TestCase):
     def _provider(self, app_name, bundle, script_result=("", 0, "")):
-        from ontask.focus.macos import MacFocusProvider
+        from ontask.platform.macos.focus import MacFocusProvider
 
         provider = MacFocusProvider.__new__(MacFocusProvider)
         provider.timeout = 1.0
@@ -242,9 +242,10 @@ class MacFocusProviderTest(unittest.TestCase):
         provider = self._provider("zen", "app.zen-browser.zen")
         with (
             mock.patch("subprocess.run", self._run),
-            mock.patch("ontask.focus.ax.accessibility_trusted", return_value=True),
+            mock.patch("ontask.platform.macos.ax.accessibility_trusted", return_value=True),
             mock.patch(
-                "ontask.focus.ax.address_bar", return_value=("https://github.com/x", "GitHub")
+                "ontask.platform.macos.ax.address_bar",
+                return_value=("https://github.com/x", "GitHub"),
             ),
         ):
             target = provider.current([ZEN])
@@ -254,7 +255,7 @@ class MacFocusProviderTest(unittest.TestCase):
 
     def test_gecko_without_accessibility_degrades_to_app_only(self):
         provider = self._provider("zen", "app.zen-browser.zen")
-        with mock.patch("ontask.focus.ax.accessibility_trusted", return_value=False):
+        with mock.patch("ontask.platform.macos.ax.accessibility_trusted", return_value=False):
             target = provider.current([ZEN])
         self.assertEqual(target.app_name, "zen")
         self.assertEqual(target.url, "")
@@ -264,8 +265,10 @@ class MacFocusProviderTest(unittest.TestCase):
     def test_accessibility_errors_do_not_propagate(self):
         provider = self._provider("zen", "app.zen-browser.zen")
         with (
-            mock.patch("ontask.focus.ax.accessibility_trusted", return_value=True),
-            mock.patch("ontask.focus.ax.address_bar", side_effect=RuntimeError("tree changed")),
+            mock.patch("ontask.platform.macos.ax.accessibility_trusted", return_value=True),
+            mock.patch(
+                "ontask.platform.macos.ax.address_bar", side_effect=RuntimeError("tree changed")
+            ),
         ):
             target = provider.current([ZEN])
         self.assertEqual(target.url, "")
@@ -320,7 +323,7 @@ class MenuBarTest(unittest.TestCase):
 
     def test_menu_builds_and_refreshes(self):
         from ontask.core.config import Config
-        from ontask.ui.menubar_macos import OnTaskApp
+        from ontask.platform.macos.menubar import OnTaskApp
 
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "config.json"
@@ -354,7 +357,7 @@ class AddressBarWalkTest(unittest.TestCase):
     """The accessibility walk, run over a fake tree instead of a real browser."""
 
     def setUp(self):
-        from ontask.focus import ax
+        from ontask.platform.macos import ax
 
         self.ax = ax
         self.calls = 0

@@ -26,7 +26,7 @@ import time
 
 from AppKit import NSWorkspace
 
-from ..core.browsers import (
+from ...core.browsers import (
     ACCESSIBILITY,
     APPLESCRIPT,
     CHROMIUM,
@@ -35,7 +35,7 @@ from ..core.browsers import (
     Browser,
     default_browsers,
 )
-from . import FocusProvider, FocusTarget
+from ...focus import FocusProvider, FocusTarget
 
 _SAFARI_SCRIPT = """
 tell application id "{bundle}"

@@ -75,7 +75,7 @@ def get_provider() -> FocusProvider:
     """Return the best focus provider available on this platform."""
     if sys.platform == "darwin":
         try:
-            from .macos import MacFocusProvider
+            from ..platform.macos.focus import MacFocusProvider
 
             return MacFocusProvider()
         except Exception:
