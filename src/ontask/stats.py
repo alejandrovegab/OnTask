@@ -24,7 +24,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .core.files import read_capped, write_private
+from .core.files import make_private, read_capped, write_private
 
 # Roughly a year of heavy use; trimmed oldest-first past this.
 MAX_EVENTS = 20000
@@ -65,6 +65,7 @@ class Stats:
         path = Path(path) if path else default_stats_path()
         try:
             raw = json.loads(read_capped(path, MAX_STATS_BYTES))
+            make_private(path)
         except FileNotFoundError:
             return cls(path=path, clock=clock)
         except (json.JSONDecodeError, OSError, ValueError):

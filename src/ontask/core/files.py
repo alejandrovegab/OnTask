@@ -18,6 +18,7 @@ import tempfile
 from pathlib import Path
 
 PRIVATE_DIR = 0o700
+PRIVATE_FILE = 0o600
 
 
 def ensure_private_dir(path: Path, tighten_existing: bool = False) -> None:
@@ -53,6 +54,17 @@ def write_private(path: Path, text: str) -> None:
         raise
 
 
+def make_private(path: Path) -> None:
+    """Tighten one of OnTask's own files to owner-only, if it exists.
+
+    New files are created private, but ones written by older versions were
+    not, and a file only rewritten occasionally (statistics, the lock) should
+    not stay readable until its next save. Unlike a folder, the file is always
+    OnTask's own, wherever the user put the config.
+    """
+    _chmod_if_owned(Path(path), PRIVATE_FILE)
+
+
 def read_capped(path: Path, limit: int) -> str:
     """Read a text file, refusing one larger than `limit` bytes.
 
@@ -71,5 +83,6 @@ def _chmod_if_owned(path: Path, mode: int) -> None:
         # %APPDATA% is already per-user; POSIX modes do not apply.
         return
     with contextlib.suppress(OSError):
-        if path.stat().st_uid == os.getuid():
+        info = path.stat()
+        if info.st_uid == os.getuid() and (info.st_mode & 0o777) != mode:
             os.chmod(path, mode)

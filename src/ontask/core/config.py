@@ -15,7 +15,7 @@ from typing import Any
 
 from .browsers import Browser, default_browsers
 from .browsers import coerce as coerce_browser
-from .files import ensure_private_dir, read_capped, write_private
+from .files import ensure_private_dir, make_private, read_capped, write_private
 
 CONFIG_VERSION = 2
 
@@ -444,6 +444,7 @@ class Config:
             ensure_private_dir(path.parent, tighten_existing=True)
         try:
             raw = json.loads(read_capped(path, MAX_CONFIG_BYTES))
+            make_private(path)
         except FileNotFoundError:
             cfg = cls()
             cfg.path = path

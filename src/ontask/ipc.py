@@ -18,7 +18,7 @@ import os
 import time
 from pathlib import Path
 
-from .core.files import ensure_private_dir, write_private
+from .core.files import ensure_private_dir, make_private, write_private
 
 LOCK_NAME = ".ontask.lock"
 OPEN_SETTINGS = ".ontask-open-settings"
@@ -95,6 +95,9 @@ class Lock:
         try:
             ensure_private_dir(self.path.parent)
             fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o600)
+            # The mode above only applies to a new file; one left by an older
+            # version keeps whatever it had.
+            make_private(self.path)
         except OSError:
             # Without a lock the app still runs; it just cannot be single.
             return True

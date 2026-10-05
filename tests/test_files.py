@@ -48,6 +48,23 @@ class PrivateFilesTest(unittest.TestCase):
         self.assertEqual(mode(path), 0o600)
 
     @unittest.skipUnless(POSIX, "POSIX permissions")
+    def test_files_left_loose_by_older_versions_are_tightened_on_use(self):
+        # Reported from a real install: the lock and stats.json kept 0644
+        # because they had not been rewritten since the upgrade.
+        Config().save(self.root / "config.json")
+        Stats(path=self.root / "stats.json").save()
+        (self.root / ipc.LOCK_NAME).write_text("123")
+        for name in ("config.json", "stats.json", ipc.LOCK_NAME):
+            os.chmod(self.root / name, 0o644)
+        Config.load(self.root / "config.json")
+        Stats.load(self.root / "stats.json")
+        lock = ipc.Lock(self.root)
+        self.addCleanup(lock.release)
+        lock.acquire()
+        for name in ("config.json", "stats.json", ipc.LOCK_NAME):
+            self.assertEqual(mode(self.root / name), 0o600, name)
+
+    @unittest.skipUnless(POSIX, "POSIX permissions")
     def test_a_folder_the_user_chose_is_left_as_it_is(self):
         chosen = self.root / "Documents"
         chosen.mkdir()
