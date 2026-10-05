@@ -290,23 +290,30 @@ Every pull request runs CI (`.github/workflows/ci.yml`):
 Layout:
 
 ```
-ontask/
-  config.py      settings model, defaults, atomic save
-  ladder.py      the escalating interval
-  matching.py    rule syntax and app/site classification
-  engine.py      the state machine (no UI, no OS calls, fake-clock testable)
-  app.py         controller wiring engine to a UI shell
-  hotkeys.py     pynput hotkeys, marshalled onto the UI thread
-  browsers.py    browser identity: bundle inspection and URL-route detection
-  stats.py       the event log behind the statistics window
-  ipc.py         single-instance lock and nudges between the app and its windows
-  focus/         macos.py (NSWorkspace + AppleScript), ax.py (accessibility
-                 address bar), fallback.py (Win32/xdotool)
-  ui/            menubar_macos.py, prompt_macos.py, notify_macos.py,
-                 app_tk.py, prompt_tk.py, settings_app.py, stats_app.py,
-                 browser_setup.py (picker + first run), app_icons.py,
-                 tk_window.py
+src/ontask/
+  app.py           controller wiring the engine to a UI shell
+  hotkeys.py       global hotkeys, marshalled onto the UI thread
+  ipc.py           single-instance lock and nudges between the app and its windows
+  stats.py         the event log behind the statistics window
+  headless.py      no-UI mode for checking focus detection
+  core/            platform-neutral: no UI, no OS calls, fake-clock testable
+    engine.py      the reminder state machine
+    ladder.py      the escalating interval
+    matching.py    rule syntax and app/site classification
+    config.py      settings model, defaults, migrations, atomic save
+    browsers.py    browser identity: bundle inspection and URL-route detection
+  focus/           FocusTarget and per-platform provider selection
+  platform/
+    macos/         menubar.py, prompt.py (check-in panel), notify.py,
+                   focus.py (NSWorkspace + AppleScript), ax.py (accessibility
+                   address bar), icons.py
+    windows/       focus.py (Win32)
+    linux/         focus.py (X11 via xdotool)
+  ui/tk/           settings.py, stats.py, browser_setup.py (picker + first run),
+                   shell.py (window shell), prompt.py, window.py
+packaging/macos/   setup_app.py (py2app)
+tests/             the suite; conftest.py keeps it off your real config
 ```
 
-`engine.py` holds every timing rule and touches nothing platform-specific, which
+`core/engine.py` holds every timing rule and touches nothing platform-specific, which
 is what lets the whole suite run on a fake clock in well under a second.
