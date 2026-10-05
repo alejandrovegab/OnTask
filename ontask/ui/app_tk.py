@@ -7,6 +7,7 @@ window that can be minimised. The check-in itself is a separate Toplevel.
 from __future__ import annotations
 
 import tkinter as tk
+from pathlib import Path
 from tkinter import messagebox, ttk
 
 from ..app import Controller, Shell
@@ -16,11 +17,11 @@ from .prompt_tk import TkPrompt
 
 
 class TkShell(Shell):
-    def __init__(self) -> None:
+    def __init__(self, config_path: Path | None = None) -> None:
         self.root = tk.Tk()
         self.root.title("OnTask")
         self.root.minsize(360, 190)
-        self.controller = Controller(shell=self)
+        self.controller = Controller(shell=self, config_path=config_path)
         self.prompt = TkPrompt(self.root, self._on_answer)
         self.hotkeys = HotkeyManager(self.controller)
         self.status_var = tk.StringVar()
@@ -117,5 +118,5 @@ class TkShell(Shell):
             self.controller.shutdown()
 
 
-def run() -> None:
-    TkShell().run()
+def run(config_path: Path | None = None) -> None:
+    TkShell(config_path).run()

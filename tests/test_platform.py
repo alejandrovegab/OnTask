@@ -333,5 +333,19 @@ class MenuBarTest(unittest.TestCase):
                 self.assertIn("Deep Work", app._profile_items)
 
 
+class EntryPointTest(unittest.TestCase):
+    def test_config_flag_reaches_the_shell(self):
+        # The lock and the nudge signals live beside the config, so the shell
+        # must watch the same config the launcher locked, not the default one.
+        from ontask import __main__ as entry
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "alt" / "config.json"
+            with mock.patch.object(sys, "platform", "linux"), \
+                 mock.patch("ontask.ui.app_tk.run") as tk_run:
+                self.assertEqual(entry.main(["--config", str(path)]), 0)
+            tk_run.assert_called_once_with(path)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

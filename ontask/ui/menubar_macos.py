@@ -8,6 +8,8 @@ delivered must never leave a question the user has no way to answer.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import objc
 import rumps
 from Foundation import NSObject
@@ -51,9 +53,9 @@ class _Waker(NSObject):
 
 
 class OnTaskApp(rumps.App):
-    def __init__(self) -> None:
+    def __init__(self, config_path: Path | None = None) -> None:
         super().__init__("OnTask", title="OnTask", quit_button=None)
-        self.controller = Controller(shell=self)
+        self.controller = Controller(shell=self, config_path=config_path)
         self.prompt = PromptWindow(self._on_answer)
         self.notifier = Notifier(self._on_answer)
         self.hotkeys = HotkeyManager(self.controller)
@@ -376,7 +378,7 @@ def _install_delegate() -> None:
         pass
 
 
-def run() -> None:
+def run(config_path: Path | None = None) -> None:
     _hide_dock_icon()
     _install_delegate()
-    OnTaskApp().run()
+    OnTaskApp(config_path).run()
