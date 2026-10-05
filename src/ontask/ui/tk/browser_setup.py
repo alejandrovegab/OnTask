@@ -12,7 +12,7 @@ detected ones do.
 
 Run standalone for the first-run window:
 
-    python -m ontask.ui.browser_setup [path/to/config.json]
+    python -m ontask.ui.tk.browser_setup [path/to/config.json]
 """
 
 from __future__ import annotations
@@ -22,10 +22,8 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
-from ontask import ipc  # noqa: E402
-from ontask.browsers import (  # noqa: E402
+from ontask import ipc
+from ontask.core.browsers import (
     ACCESSIBILITY,
     UNSUPPORTED,
     Browser,
@@ -33,9 +31,9 @@ from ontask.browsers import (  # noqa: E402
     inspect_app,
     installed_browsers,
 )
-from ontask.config import Config  # noqa: E402
-from ontask.ui.app_icons import icon_base64  # noqa: E402
-from ontask.ui.tk_window import bring_to_front, watch_raise  # noqa: E402
+from ontask.core.config import Config
+from ontask.platform.macos.icons import icon_base64
+from ontask.ui.tk.window import bring_to_front, watch_raise
 
 ROUTE_NOTES = {
     ACCESSIBILITY: "reads the address bar, needs Accessibility",

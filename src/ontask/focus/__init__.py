@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
-    from ..browsers import Browser
+    from ..core.browsers import Browser
 
 
 @dataclass(frozen=True)
@@ -71,15 +71,30 @@ class FocusProvider:
         pass
 
 
+class NullFocusProvider(FocusProvider):
+    """Used where detection is impossible.
+
+    Every target comes back unknown, which `matching.classify` treats as
+    on-task, so the app stays quiet instead of nagging constantly.
+    """
+
+    def current(self, browsers: list[Browser] | None = None) -> FocusTarget:
+        return FocusTarget()
+
+
 def get_provider() -> FocusProvider:
     """Return the best focus provider available on this platform."""
-    if sys.platform == "darwin":
-        try:
-            from .macos import MacFocusProvider
+    try:
+        if sys.platform == "darwin":
+            from ..platform.macos.focus import MacFocusProvider
 
             return MacFocusProvider()
-        except Exception:
-            pass
-    from .fallback import FallbackFocusProvider
+        if sys.platform == "win32":
+            from ..platform.windows.focus import WindowsFocusProvider
 
-    return FallbackFocusProvider()
+            return WindowsFocusProvider()
+        from ..platform.linux.focus import X11FocusProvider
+
+        return X11FocusProvider()
+    except Exception:
+        return NullFocusProvider()

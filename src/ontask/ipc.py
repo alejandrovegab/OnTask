@@ -30,7 +30,7 @@ def runtime_dir(config_path: Path | None) -> Path:
     """Where the marker files live: beside config.json."""
     if config_path is not None:
         return Path(config_path).parent
-    from .config import default_config_path
+    from .core.config import default_config_path
 
     return default_config_path().parent
 

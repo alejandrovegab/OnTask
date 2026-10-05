@@ -1,14 +1,11 @@
 """Builds the settings window headlessly and exercises its load/save path."""
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from ontask.browsers import ACCESSIBILITY, APPLESCRIPT, Browser
-from ontask.config import Config
+from ontask.core.browsers import ACCESSIBILITY, APPLESCRIPT, Browser
+from ontask.core.config import Config
 
 try:
     import tkinter as tk
@@ -35,10 +32,10 @@ class SettingsWindowTest(unittest.TestCase):
     def setUp(self):
         from unittest import mock
 
-        from ontask.ui.settings_app import SettingsWindow
+        from ontask.ui.tk.settings import SettingsWindow
 
         patcher = mock.patch(
-            "ontask.ui.browser_setup.installed_browsers", return_value=list(INSTALLED)
+            "ontask.ui.tk.browser_setup.installed_browsers", return_value=list(INSTALLED)
         )
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -198,10 +195,10 @@ class FirstRunWindowTest(unittest.TestCase):
     def setUp(self):
         from unittest import mock
 
-        from ontask.ui.browser_setup import FirstRunWindow
+        from ontask.ui.tk.browser_setup import FirstRunWindow
 
         patcher = mock.patch(
-            "ontask.ui.browser_setup.installed_browsers", return_value=list(INSTALLED)
+            "ontask.ui.tk.browser_setup.installed_browsers", return_value=list(INSTALLED)
         )
         patcher.start()
         self.addCleanup(patcher.stop)

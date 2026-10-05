@@ -10,9 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from ontask.browsers import (
+from ontask.core.browsers import (
     ACCESSIBILITY,
     APPLESCRIPT,
     CHROMIUM,
@@ -187,7 +185,7 @@ class FocusTargetTest(unittest.TestCase):
 @unittest.skipUnless(HAVE_PYOBJC, "PyObjC not installed")
 class MacFocusProviderTest(unittest.TestCase):
     def _provider(self, app_name, bundle, script_result=("", 0, "")):
-        from ontask.focus.macos import MacFocusProvider
+        from ontask.platform.macos.focus import MacFocusProvider
 
         provider = MacFocusProvider.__new__(MacFocusProvider)
         provider.timeout = 1.0
@@ -244,9 +242,10 @@ class MacFocusProviderTest(unittest.TestCase):
         provider = self._provider("zen", "app.zen-browser.zen")
         with (
             mock.patch("subprocess.run", self._run),
-            mock.patch("ontask.focus.ax.accessibility_trusted", return_value=True),
+            mock.patch("ontask.platform.macos.ax.accessibility_trusted", return_value=True),
             mock.patch(
-                "ontask.focus.ax.address_bar", return_value=("https://github.com/x", "GitHub")
+                "ontask.platform.macos.ax.address_bar",
+                return_value=("https://github.com/x", "GitHub"),
             ),
         ):
             target = provider.current([ZEN])
@@ -256,7 +255,7 @@ class MacFocusProviderTest(unittest.TestCase):
 
     def test_gecko_without_accessibility_degrades_to_app_only(self):
         provider = self._provider("zen", "app.zen-browser.zen")
-        with mock.patch("ontask.focus.ax.accessibility_trusted", return_value=False):
+        with mock.patch("ontask.platform.macos.ax.accessibility_trusted", return_value=False):
             target = provider.current([ZEN])
         self.assertEqual(target.app_name, "zen")
         self.assertEqual(target.url, "")
@@ -266,8 +265,10 @@ class MacFocusProviderTest(unittest.TestCase):
     def test_accessibility_errors_do_not_propagate(self):
         provider = self._provider("zen", "app.zen-browser.zen")
         with (
-            mock.patch("ontask.focus.ax.accessibility_trusted", return_value=True),
-            mock.patch("ontask.focus.ax.address_bar", side_effect=RuntimeError("tree changed")),
+            mock.patch("ontask.platform.macos.ax.accessibility_trusted", return_value=True),
+            mock.patch(
+                "ontask.platform.macos.ax.address_bar", side_effect=RuntimeError("tree changed")
+            ),
         ):
             target = provider.current([ZEN])
         self.assertEqual(target.url, "")
@@ -321,8 +322,8 @@ class MenuBarTest(unittest.TestCase):
     """Builds the whole menu without starting the run loop."""
 
     def test_menu_builds_and_refreshes(self):
-        from ontask.config import Config
-        from ontask.ui.menubar_macos import OnTaskApp
+        from ontask.core.config import Config
+        from ontask.platform.macos.menubar import OnTaskApp
 
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "config.json"
@@ -356,7 +357,7 @@ class AddressBarWalkTest(unittest.TestCase):
     """The accessibility walk, run over a fake tree instead of a real browser."""
 
     def setUp(self):
-        from ontask.focus import ax
+        from ontask.platform.macos import ax
 
         self.ax = ax
         self.calls = 0
@@ -400,6 +401,29 @@ class AddressBarWalkTest(unittest.TestCase):
         self.assertEqual(self._walk(window), "https://github.com/y")
 
 
+class ProviderSelectionTest(unittest.TestCase):
+    def _provider_on(self, platform):
+        from ontask.focus import get_provider
+
+        with mock.patch.object(sys, "platform", platform):
+            return type(get_provider()).__name__
+
+    def test_each_platform_gets_its_own_provider(self):
+        self.assertEqual(self._provider_on("win32"), "WindowsFocusProvider")
+        self.assertEqual(self._provider_on("linux"), "X11FocusProvider")
+
+    def test_a_provider_that_cannot_load_stays_quiet(self):
+        from ontask.focus import NullFocusProvider, get_provider
+
+        with (
+            mock.patch.object(sys, "platform", "linux"),
+            mock.patch("ontask.platform.linux.focus.X11FocusProvider", side_effect=OSError),
+        ):
+            provider = get_provider()
+        self.assertIsInstance(provider, NullFocusProvider)
+        self.assertTrue(provider.current().is_unknown)
+
+
 class EntryPointTest(unittest.TestCase):
     def test_config_flag_reaches_the_shell(self):
         # The lock and the nudge signals live beside the config, so the shell
@@ -410,7 +434,7 @@ class EntryPointTest(unittest.TestCase):
             path = Path(tmp) / "alt" / "config.json"
             with (
                 mock.patch.object(sys, "platform", "linux"),
-                mock.patch("ontask.ui.app_tk.run") as tk_run,
+                mock.patch("ontask.ui.tk.shell.run") as tk_run,
             ):
                 self.assertEqual(entry.main(["--config", str(path)]), 0)
             tk_run.assert_called_once_with(path)

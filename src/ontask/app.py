@@ -13,12 +13,12 @@ import sys
 import time
 from pathlib import Path
 
-from . import engine as eng
 from . import ipc
-from .config import Config, Profile
-from .engine import Engine, format_duration
+from .core import engine as eng
+from .core.config import Config, Profile
+from .core.engine import Engine, format_duration
+from .core.matching import classify, suggest_rule
 from .focus import UNKNOWN, FocusTarget, get_provider
-from .matching import classify, suggest_rule
 from .stats import Stats, default_stats_path
 
 
@@ -254,15 +254,15 @@ class Controller:
     # -- settings ---------------------------------------------------------
 
     def open_settings(self) -> None:
-        self._open_window("ontask.ui.settings_app", "_settings_proc", ipc.RAISE_SETTINGS)
+        self._open_window("ontask.ui.tk.settings", "_settings_proc", ipc.RAISE_SETTINGS)
 
     def open_first_run(self) -> None:
         """Offer the browser picker once, on the first launch."""
-        self._open_window("ontask.ui.browser_setup", "_setup_proc", ipc.RAISE_SETUP)
+        self._open_window("ontask.ui.tk.browser_setup", "_setup_proc", ipc.RAISE_SETUP)
 
     def open_stats(self) -> None:
         self.stats.maybe_save(force=True)
-        self._open_window("ontask.ui.stats_app", "_stats_proc", ipc.RAISE_STATS)
+        self._open_window("ontask.ui.tk.stats", "_stats_proc", ipc.RAISE_STATS)
 
     def _open_window(self, module: str, attribute: str, raise_marker: str) -> None:
         """Show a helper window, reusing the one already open.
@@ -278,10 +278,7 @@ class Controller:
         path = str(self.config.path or "")
         # A separate process keeps Tk off the menu bar app's run loop.
         try:
-            proc = subprocess.Popen(
-                [sys.executable, "-m", module, path],
-                cwd=str(Path(__file__).resolve().parents[1]),
-            )
+            proc = subprocess.Popen([sys.executable, "-m", module, path])
         except OSError:
             return
         setattr(self, attribute, proc)

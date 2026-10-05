@@ -21,8 +21,8 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
+from ..focus import UNKNOWN, FocusTarget
 from .config import Config
-from .focus import UNKNOWN, FocusTarget
 from .ladder import Ladder
 from .matching import classify, suggest_rule
 

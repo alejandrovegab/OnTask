@@ -9,7 +9,7 @@ Charts are drawn straight onto a Tk canvas. That avoids a plotting dependency
 for what are two small charts, and it redraws on resize so the window stays
 usable at any size.
 
-Usage: python -m ontask.ui.stats_app [path/to/config.json]
+Usage: python -m ontask.ui.tk.stats [path/to/config.json]
 """
 
 from __future__ import annotations
@@ -20,11 +20,9 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
-from ontask import ipc  # noqa: E402
-from ontask.stats import Stats, Summary, default_stats_path, format_hour, format_span  # noqa: E402
-from ontask.ui.tk_window import bring_to_front, watch_raise  # noqa: E402
+from ontask import ipc
+from ontask.stats import Stats, Summary, default_stats_path, format_hour, format_span
+from ontask.ui.tk.window import bring_to_front, watch_raise
 
 DAY = 86400.0
 RANGES = {

@@ -10,10 +10,10 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-from ..app import Controller, Shell
-from ..engine import IDLE, PAUSED, ActivePrompt
-from ..hotkeys import HotkeyManager
-from .prompt_tk import TkPrompt
+from ...app import Controller, Shell
+from ...core.engine import IDLE, PAUSED, ActivePrompt
+from ...hotkeys import HotkeyManager
+from .prompt import TkPrompt
 
 
 class TkShell(Shell):
@@ -112,7 +112,7 @@ class TkShell(Shell):
 
     def _subtitle(self) -> str:
         snap = self.controller.engine.snapshot()
-        from ..engine import format_duration
+        from ...core.engine import format_duration
 
         return f"{snap.profile} - {format_duration(snap.elapsed_seconds)} elapsed"
 

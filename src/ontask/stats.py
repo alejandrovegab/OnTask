@@ -41,7 +41,7 @@ def default_stats_path(config_path: Path | None = None) -> Path:
     """Stats live beside config.json, under whatever root that resolved to."""
     if config_path is not None:
         return Path(config_path).with_name("stats.json")
-    from .config import default_config_path
+    from .core.config import default_config_path
 
     return default_config_path().with_name("stats.json")
 

@@ -1,13 +1,10 @@
 """Timing and rule tests. Everything runs on a fake clock, so it is instant."""
 
-import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from ontask.config import Config, Profile
-from ontask.engine import (
+from ontask.core.config import Config, Profile
+from ontask.core.engine import (
     BLOCKED,
     CADENCE,
     DISTRACTION,
@@ -18,9 +15,9 @@ from ontask.engine import (
     SuggestApprove,
     format_duration,
 )
+from ontask.core.ladder import Ladder
+from ontask.core.matching import APPROVED, DISAPPROVED, UNAPPROVED, Rule, classify
 from ontask.focus import FocusTarget
-from ontask.ladder import Ladder
-from ontask.matching import APPROVED, DISAPPROVED, UNAPPROVED, Rule, classify
 
 APPROVED_APP = FocusTarget(app_name="Code", bundle_id="com.microsoft.VSCode")
 UNLISTED_APP = FocusTarget(app_name="Messages", bundle_id="com.apple.MobileSMS")
@@ -415,7 +412,7 @@ class ShellInterfaceTest(unittest.TestCase):
         # The controller calls Shell methods unconditionally, so a shell that
         # does not inherit the defaults crashes the first time a new one lands.
         try:
-            from ontask.ui.app_tk import TkShell
+            from ontask.ui.tk.shell import TkShell
         except ImportError as exc:  # pragma: no cover - no Tk on this machine
             self.skipTest(f"Tk unavailable: {exc}")
         from ontask.app import Shell
