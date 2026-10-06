@@ -26,6 +26,17 @@ Every pull request runs CI (`.github/workflows/ci.yml`), and it also runs weekly
 - the tests on macOS, Windows and Linux,
 - `pip-audit` of each platform's dependencies.
 
+## Performance
+
+OnTask checks the frontmost app every couple of seconds for as long as it runs,
+so that check, `Controller.poll()`, has a budget: a typical poll must take under
+**1 ms**. `tests/test_performance.py` enforces it on every pull request, using
+a fake focus provider and a profile with 100 rules per list. To see the numbers:
+
+```sh
+./.venv/bin/python tests/perf_poll.py
+```
+
 ## Code layout
 
 ```
@@ -51,7 +62,8 @@ src/ontask/
   ui/tk/           settings.py, stats.py, browser_setup.py (picker + first run),
                    shell.py (window shell), prompt.py, window.py
 packaging/macos/   setup_app.py (py2app)
-tests/             the suite; conftest.py keeps it off your real config
+tests/             the suite; conftest.py keeps it off your real config,
+                   perf_poll.py measures poll()
 ```
 
 `core/engine.py` holds every timing rule and touches nothing platform-specific, which
