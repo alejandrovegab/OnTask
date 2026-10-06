@@ -63,28 +63,48 @@ class SettingsWindowTest(unittest.TestCase):
         self.assertIs(packed[0], footer)
         self.assertEqual(footer.pack_info()["side"], "bottom")
 
-    def test_the_window_opens_no_taller_than_the_screen(self):
-        from unittest import mock
+    def _fitted_height(self, usable: int, screen: int = 982) -> int:
+        """The height fit_to_screen asks for, for a window that wants 2000 px.
 
-        from ontask.ui.tk import window
-
-        with mock.patch.object(window, "_usable_height", return_value=800):
-            window.fit_to_screen(self.root)
-        self.root.update_idletasks()
-        self.assertLessEqual(self.root.winfo_height(), max(800 - window.TITLE_BAR, 660))
-
-    def test_without_the_usable_height_a_margin_is_left(self):
+        The request is checked rather than the window's size: an unshown
+        window reports its size differently on each platform.
+        """
         from unittest import mock
 
         from ontask.ui.tk import window
 
         with (
-            mock.patch.object(window, "_usable_height", return_value=0),
-            mock.patch.object(self.root, "winfo_screenheight", return_value=800),
+            mock.patch.object(window, "_usable_height", return_value=usable),
+            mock.patch.object(self.root, "winfo_screenheight", return_value=screen),
+            mock.patch.object(self.root, "winfo_reqheight", return_value=2000),
+            mock.patch.object(self.root, "geometry") as geometry,
         ):
             window.fit_to_screen(self.root)
-        self.root.update_idletasks()
-        self.assertLessEqual(self.root.winfo_height(), max(800 - window.SCREEN_MARGIN, 660))
+        size = geometry.call_args[0][0]
+        return int(size.split("x")[1])
+
+    def test_the_window_opens_no_taller_than_the_screen(self):
+        from ontask.ui.tk.window import TITLE_BAR
+
+        self.assertEqual(self._fitted_height(usable=948), 948 - TITLE_BAR)
+
+    def test_without_the_usable_height_a_margin_is_left(self):
+        from ontask.ui.tk.window import SCREEN_MARGIN
+
+        self.assertEqual(self._fitted_height(usable=0, screen=800), 800 - SCREEN_MARGIN)
+
+    def test_a_window_that_fits_keeps_its_size(self):
+        from unittest import mock
+
+        from ontask.ui.tk import window
+
+        with (
+            mock.patch.object(window, "_usable_height", return_value=948),
+            mock.patch.object(self.root, "winfo_reqheight", return_value=600),
+            mock.patch.object(self.root, "geometry") as geometry,
+        ):
+            window.fit_to_screen(self.root)
+        self.assertTrue(geometry.call_args[0][0].endswith("x600"))
 
     def test_defaults_are_shown(self):
         self.assertEqual(self.window.intervals_var.get(), "3, 5, 7, 10, 14, 20")
