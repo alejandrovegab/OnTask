@@ -53,3 +53,11 @@ once. Everything installs from it with `--require-hashes`.
   or `./scripts/update-lock.sh --upgrade-package NAME` (one), then run the tests.
 - **A vulnerability report** (from CI's weekly `pip-audit`, or Dependabot):
   upgrade that package as above.
+
+## Changelog and version
+
+Add each user-visible change to the **Unreleased** section of
+[CHANGELOG.md](../CHANGELOG.md) in the same pull request that makes it. At a
+release, rename that section to the new version and date, start a fresh
+**Unreleased** above it, and set the same version in `pyproject.toml` and
+`src/ontask/__init__.py`.
