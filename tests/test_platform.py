@@ -394,6 +394,88 @@ class MenuBarTest(unittest.TestCase):
                 self.assertIn("Deep Work", app._profile_items)
 
 
+class _FakeTimer:
+    """Stands in for rumps.Timer: records its pace and whether it is running."""
+
+    def __init__(self, callback, interval):
+        self.callback = callback
+        self.interval = interval
+        self.running = False
+        self.starts = 0
+
+    def start(self):
+        self.running = True
+        self.starts += 1
+
+    def stop(self):
+        self.running = False
+
+    def is_alive(self):
+        return self.running
+
+
+@unittest.skipUnless(HAVE_RUMPS and HAVE_PYOBJC, "rumps/PyObjC not installed")
+class MenuBarIdleTest(unittest.TestCase):
+    """With no session running the menu bar app reads nothing on a timer."""
+
+    def setUp(self):
+        from ontask.core.config import Config
+        from ontask.platform.macos.menubar import OnTaskApp
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "config.json"
+        cfg = Config()
+        cfg.setup_complete = True
+        cfg.general.hotkeys.toggle_session = ""
+        cfg.general.hotkeys.answer_yes = ""
+        cfg.general.hotkeys.answer_no = ""
+        cfg.general.poll_seconds = 5.0
+        cfg.save(path)
+        with (
+            mock.patch("ontask.app.Config.load", return_value=Config.load(path)),
+            mock.patch("rumps.Timer", _FakeTimer),
+        ):
+            self.app = OnTaskApp()
+        self.focus = self.app.controller.focus = mock.Mock()
+        self.focus.current.return_value = FocusTarget(app_name="Messages")
+
+    def test_idle_the_clock_stops_and_the_poll_slows_to_the_idle_pace(self):
+        from ontask.platform.macos.menubar import IDLE_POLL_SECONDS
+
+        self.assertFalse(self.app.clock_timer.running)
+        self.assertTrue(self.app.timer.running)
+        self.assertEqual(self.app.timer.interval, IDLE_POLL_SECONDS)
+
+    def test_a_session_starts_the_clock_and_the_configured_poll(self):
+        self.app.controller.start_session()
+        self.assertTrue(self.app.clock_timer.running)
+        self.assertEqual(self.app.timer.interval, 5.0)
+
+    def test_pausing_stops_the_clock_again(self):
+        from ontask.platform.macos.menubar import IDLE_POLL_SECONDS
+
+        self.app.controller.start_session()
+        self.app.controller.pause_or_resume()
+        self.assertFalse(self.app.clock_timer.running)
+        self.assertEqual(self.app.timer.interval, IDLE_POLL_SECONDS)
+
+    def test_an_unchanged_pace_does_not_restart_the_poll(self):
+        starts = self.app.timer.starts
+        self.app.refresh()
+        self.app.refresh()
+        self.assertEqual(self.app.timer.starts, starts)
+
+    def test_opening_the_menu_reads_the_front_app_with_no_session(self):
+        self.app._menu_will_open()
+        self.focus.current.assert_called_once()
+        self.assertEqual(self.app.status_items["focus"].title, "Focus: Messages - unapproved")
+        self.assertEqual(self.app.approve_item.title, "Approve Messages")
+
+    def test_the_menu_has_the_opening_delegate(self):
+        self.assertIs(self.app._menu._menu.delegate(), self.app._menu_opening)
+
+
 @unittest.skipUnless(sys.platform == "darwin", "macOS accessibility API")
 class AddressBarWalkTest(unittest.TestCase):
     """The accessibility walk, run over a fake tree instead of a real browser."""

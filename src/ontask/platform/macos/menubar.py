@@ -26,6 +26,10 @@ STATUS_SLOTS = ("session", "profile", "interval", "next", "focus")
 # made the seconds jump in whatever step `poll_seconds` happened to be.
 CLOCK_SECONDS = 1.0
 
+# With no session running (or paused), the poll only checks for a second launch
+# and for saved settings, so it keeps this pace whatever `poll_seconds` is.
+IDLE_POLL_SECONDS = 2.0
+
 
 class _Waker(NSObject):
     """Hops a background thread's request onto the main thread.
@@ -52,6 +56,23 @@ class _Waker(NSObject):
             pass
 
 
+class _MenuOpening(NSObject):
+    """The status menu's delegate: says when the menu is about to appear."""
+
+    def initWithCallback_(self, callback):
+        self = objc.super(_MenuOpening, self).init()
+        if self is None:
+            return None
+        self._callback = callback
+        return self
+
+    def menuWillOpen_(self, _menu):
+        try:
+            self._callback()
+        except Exception:
+            pass
+
+
 class OnTaskApp(rumps.App):
     def __init__(self, config_path: Path | None = None) -> None:
         super().__init__("OnTask", title="OnTask", quit_button=None)
@@ -63,20 +84,22 @@ class OnTaskApp(rumps.App):
         self._pending: ActivePrompt | None = None
         self._profile_items: dict[str, rumps.MenuItem] = {}
         self._warned_notifications = False
-        self._poll_seconds = self.controller.config.general.poll_seconds
         self._waker = _Waker.alloc().initWithCallback_(self._wake)
         self.controller.set_wake_hook(self._waker.wake)
         self._build_menu()
+        # AppKit holds a menu's delegate weakly, so this reference keeps it alive.
+        self._menu_opening = _MenuOpening.alloc().initWithCallback_(self._menu_will_open)
+        self._menu._menu.setDelegate_(self._menu_opening)
         self.hotkeys.start()
-        self.refresh()
-        self.timer = rumps.Timer(self._tick, self._poll_seconds)
-        self.timer.start()
-        if not self.controller.config.setup_complete:
-            self.controller.open_first_run()
+        # `refresh` starts the timers, at the pace the session state calls for.
+        self.timer = rumps.Timer(self._tick, IDLE_POLL_SECONDS)
+        self._poll_seconds: float | None = None
         # A second, faster timer keeps the clock ticking every second without
         # sampling the frontmost window that often.
         self.clock_timer = rumps.Timer(self._clock_tick, CLOCK_SECONDS)
-        self.clock_timer.start()
+        self.refresh()
+        if not self.controller.config.setup_complete:
+            self.controller.open_first_run()
 
     # -- menu -------------------------------------------------------------
 
@@ -158,6 +181,35 @@ class OnTaskApp(rumps.App):
         """Run queued hotkey actions at once, on the main thread."""
         self.controller.wake()
         self.refresh()
+
+    def _menu_will_open(self) -> None:
+        """Read the frontmost app just before the menu shows.
+
+        Opening a menu bar menu leaves the app you were in at the front, so
+        this is what the focus line and Approve/Block act on - with or without
+        a session running.
+        """
+        self.controller.look_now()
+        self.refresh()
+
+    def _pace_timers(self, phase: str) -> None:
+        """Run the timers only as often as the session state needs.
+
+        rumps ignores an interval change on a timer that started less than one
+        interval ago, so a change of pace restarts the timer instead.
+        """
+        running = phase == RUNNING
+        interval = self.controller.config.general.poll_seconds if running else IDLE_POLL_SECONDS
+        if interval != self._poll_seconds:
+            self._poll_seconds = interval
+            self.timer.stop()
+            self.timer.interval = interval
+            self.timer.start()
+        # Idle or paused, the menu bar title does not change from second to second.
+        if running and not self.clock_timer.is_alive():
+            self.clock_timer.start()
+        elif not running and self.clock_timer.is_alive():
+            self.clock_timer.stop()
 
     def _on_answer(self, yes: bool) -> None:
         self.controller.answer(yes)
@@ -293,9 +345,7 @@ class OnTaskApp(rumps.App):
         for name, item in self._profile_items.items():
             item.state = 1 if name == snap.profile else 0
 
-        if general.poll_seconds != self._poll_seconds:
-            self._poll_seconds = general.poll_seconds
-            self.timer.interval = self._poll_seconds
+        self._pace_timers(snap.phase)
 
     # -- diagnostics ------------------------------------------------------
 
