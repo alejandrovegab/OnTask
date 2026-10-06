@@ -30,7 +30,10 @@ wander somewhere off-limits and it notices within seconds.
   for "Deep Work", "Writing", or whatever you need.
 - **Learns from you.** Keep saying yes to the same unlisted app and OnTask
   offers to approve it.
-- **Two ways to be asked.** A floating window, a notification banner with
+- **See what it sees.** Click the menu bar icon and it names the app or site
+  you're on and how your rules treat it: approved, disapproved or not listed.
+  Approve or disapprove it right there, with or without a session running.
+- **Your choice of prompt.** A floating window, a notification banner with
   Yes/No buttons, or a banner that escalates to the window if ignored.
 - **Statistics.** Session time, time lost to distractions and where it went,
   your best and worst hours, and the trend over days. Stored locally.
@@ -89,7 +92,7 @@ breaking or asking again.
 | --- | --- | --- |
 | **Automation** | Reading the active tab in Safari and Chromium browsers | That browser is tracked at app level |
 | **Accessibility** | Global hotkeys; reading the address bar in Firefox-based browsers | Hotkeys off; those browsers tracked at app level |
-| **Notifications** | Banner check-ins with Yes/No buttons | Check-ins use the floating window |
+| **Notifications** | Banner check-ins with Yes/No buttons; short confirmations | Check-ins use the floating window; no confirmations |
 
 ## Privacy
 
@@ -130,7 +133,11 @@ breaking or asking again.
 Planned work, roughly in order. Each item lands as its own reviewed pull request.
 
 - **Performance.** Event-driven focus detection, in-process AppleScript and
-  zero work between sessions, aiming for under 0.5% CPU even on an old machine.
+  cached rules, aiming for under 0.5% CPU during a session even on an old
+  machine.
+- **A smarter menu.** Only the actions that change something, including
+  removing the current app or site from a list, and confirmations that name
+  things plainly ("Messages", not "app:Messages").
 - **Native macOS interface.** Settings and Statistics rebuilt in AppKit, with
   the Liquid Glass look on macOS 26 and smooth native scrolling. Settings gains
   search, per-setting reset, and undo for any change.
@@ -138,15 +145,21 @@ Planned work, roughly in order. Each item lands as its own reviewed pull request
   global keyboard listener, so no Accessibility access is needed. Adds a
   click-and-press shortcut editor and more actions.
 - **Check-in refinements.**
+  - Pauses itself while you're away (sleep, a locked screen or another user),
+    so unanswered check-ins don't pile up.
   - The session clock pauses while a check-in is open.
   - A guard against answering by accident while typing.
   - Configurable sounds.
-  - An offer to disapprove a site after repeated *no* answers.
+  - An offer to disapprove a site after repeated *no* answers, and a "don't
+    suggest again" choice for approval offers.
+  - Banner-only check-ins fall back to the window if ignored, so a Focus mode
+    can't hide them.
 - **Private statistics.** Opt-in, aggregated per day and hour, domains only,
   encrypted with AES-256 using a key kept in the macOS keychain, and deletable
   by site or date range.
-- **Onboarding.** A guided first run for permissions and browsers. A choice of
-  living in the menu bar, the Dock, or a floating timer.
+- **Onboarding.** A guided first run for permissions (including notifications)
+  and browsers. A choice of living in the menu bar, the Dock, or a floating
+  timer.
 - **Windows.**
   - A tray, taskbar or floating timer.
   - Site tracking through UI Automation.
@@ -155,7 +168,8 @@ Planned work, roughly in order. Each item lands as its own reviewed pull request
   - Wayland-first, with a GTK4 interface.
   - Site tracking through the accessibility bus, and a GNOME Shell extension.
   - Packages for Flatpak, AUR, `.deb` and `.rpm`.
-- **Releases.** Downloadable builds from GitHub Releases.
+- **Releases.** Downloadable builds from GitHub Releases and a Homebrew tap,
+  with optional update checks that stay off unless you allow them.
 
 ## How it's built
 
