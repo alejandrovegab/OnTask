@@ -23,6 +23,13 @@ from .prompt import PromptWindow
 
 STATUS_SLOTS = ("session", "profile", "interval", "next", "focus")
 
+# The most list actions the menu offers at once: two for a target on neither
+# list (approve, disapprove), two for a listed one (the other list, remove).
+RULE_SLOTS = 2
+
+# Shown, greyed out, when nothing in front could be detected.
+NOTHING_TO_LIST = "Nothing to approve or disapprove"
+
 # The menu bar clock is redrawn on its own timer. Tying it to the focus poll
 # made the seconds jump in whatever step `poll_seconds` happened to be.
 CLOCK_SECONDS = 1.0
@@ -113,8 +120,7 @@ class OnTaskApp(rumps.App):
         self.toggle_item = rumps.MenuItem("Start Session", callback=self._toggle)
         self.pause_item = rumps.MenuItem("Pause", callback=self._pause)
         self.profile_menu = rumps.MenuItem("Profile")
-        self.approve_item = rumps.MenuItem("Approve Current", callback=self._approve)
-        self.disapprove_item = rumps.MenuItem("Disapprove Current", callback=self._disapprove)
+        self.rule_items = [rumps.MenuItem("") for _ in range(RULE_SLOTS)]
         self.menu = [
             *self.status_items.values(),
             None,
@@ -122,8 +128,7 @@ class OnTaskApp(rumps.App):
             self.pause_item,
             None,
             self.profile_menu,
-            self.approve_item,
-            self.disapprove_item,
+            *self.rule_items,
             None,
             rumps.MenuItem("Settings...", callback=self._settings),
             rumps.MenuItem("Statistics...", callback=self._statistics),
@@ -151,11 +156,10 @@ class OnTaskApp(rumps.App):
     def _pause(self, _sender) -> None:
         self.controller.pause_or_resume()
 
-    def _approve(self, _sender) -> None:
-        self.controller.approve_current()
-
-    def _disapprove(self, _sender) -> None:
-        self.controller.disapprove_current()
+    def _rule_action(self, sender) -> None:
+        action = getattr(sender, "rule_action", None)
+        if action is not None:
+            self.controller.run_rule_action(action)
 
     def _settings(self, _sender) -> None:
         self.controller.open_settings()
@@ -364,9 +368,7 @@ class OnTaskApp(rumps.App):
         self.toggle_item.title = "End Session" if snap.phase != IDLE else "Start Session"
         self.pause_item.title = "Resume" if snap.phase == PAUSED else "Pause"
         self.pause_item.set_callback(self._pause if snap.phase != IDLE else None)
-        label = self.controller.target.label() if not self.controller.target.is_unknown else ""
-        self.approve_item.title = f"Approve {label}" if label else "Approve Current"
-        self.disapprove_item.title = f"Disapprove {label}" if label else "Disapprove Current"
+        self._show_rule_actions()
 
         if set(self._profile_items) != set(self.controller.config.profile_names()):
             self._rebuild_profiles()
@@ -376,6 +378,20 @@ class OnTaskApp(rumps.App):
         self._pace_timers(snap.phase)
         if snap.phase == RUNNING:
             self._align_clock(snap.elapsed_seconds)
+
+    def _show_rule_actions(self) -> None:
+        """Offer only the list changes that would change what's in front."""
+        actions = self.controller.rule_actions()
+        for index, item in enumerate(self.rule_items):
+            action = actions[index] if index < len(actions) else None
+            item.rule_action = action
+            if action is not None:
+                item.title = self.controller.rule_action_title(action)
+                item.set_callback(self._rule_action)
+            else:
+                item.title = NOTHING_TO_LIST if index == 0 and not actions else ""
+                item.set_callback(None)
+            item._menuitem.setHidden_(not item.title)
 
     def _show_title(self, text: str) -> None:
         """Set the menu bar text, with digits that all take the same width.

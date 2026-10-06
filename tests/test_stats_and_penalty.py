@@ -358,7 +358,7 @@ class SuggestionMessageTest(unittest.TestCase):
         self.assertIn("Messages 5 times.", self._message(5))
         self.assertIn("Messages twice.", self._message(2))
         self.assertIn("Messages once.", self._message(1))
-        self.assertIn("Add app:Messages to the approved list for Deep Work?", self._message(3))
+        self.assertIn("Add Messages to the approved list for Deep Work?", self._message(3))
 
 
 class SummaryTest(unittest.TestCase):

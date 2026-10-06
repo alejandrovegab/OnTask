@@ -547,20 +547,44 @@ class WordingTest(unittest.TestCase):
         self.assertIn("is on your disapproved list", question)
         self.assertNotIn("blocked", question.lower())
 
+    def _run(self, verb):
+        action = next(a for a in self.controller.rule_actions() if a.verb == verb)
+        self.controller.run_rule_action(action)
+
     def test_disapproving_adds_the_rule_and_says_which_list(self):
         self._status_of(UNLISTED_APP)
-        self.controller.disapprove_current()
+        self._run("disapprove")
         self.assertIn("app:Messages", Config.load(self.path).profile("Test").disapproved)
         self.controller.shell.notify.assert_called_with(
-            "OnTask", "Added app:Messages to the disapproved list for Test."
+            "OnTask", "Added Messages to the disapproved list for Test."
         )
 
     def test_approving_says_which_list(self):
         self._status_of(UNLISTED_APP)
-        self.controller.approve_current()
+        self._run("approve")
         self.controller.shell.notify.assert_called_with(
-            "OnTask", "Added app:Messages to the approved list for Test."
+            "OnTask", "Added Messages to the approved list for Test."
         )
+
+    def test_removing_takes_the_rule_off_and_says_which_list(self):
+        self._status_of(BLOCKED_SITE)
+        self._run("remove")
+        self.assertNotIn("site:youtube.com", Config.load(self.path).profile("Test").disapproved)
+        self.controller.shell.notify.assert_called_with(
+            "OnTask", "Removed youtube.com from the disapproved list for Test."
+        )
+        self.assertTrue(self.controller.current_status_text().endswith(" - not listed"))
+
+    def test_menu_titles_name_the_thing_and_the_list(self):
+        self._status_of(APPROVED_APP)
+        titles = [self.controller.rule_action_title(a) for a in self.controller.rule_actions()]
+        self.assertEqual(titles, ["Disapprove Code", "Remove Code from Approved"])
+
+    def test_the_actions_follow_a_list_change(self):
+        self._status_of(UNLISTED_APP)
+        self._run("approve")
+        verbs = [a.verb for a in self.controller.rule_actions()]
+        self.assertEqual(verbs, ["disapprove", "remove"])
 
     def test_the_settings_file_keeps_its_words(self):
         # Only the screen wording changed; existing config files must load as-is.
