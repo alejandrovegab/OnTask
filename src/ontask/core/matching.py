@@ -22,6 +22,9 @@ APPROVED = "approved"
 DISAPPROVED = "disapproved"
 UNAPPROVED = "unapproved"
 
+# What each status is called on screen. The names above are internal only.
+STATUS_LABELS = {APPROVED: "approved", DISAPPROVED: "disapproved", UNAPPROVED: "not listed"}
+
 
 @dataclass(frozen=True)
 class Rule:

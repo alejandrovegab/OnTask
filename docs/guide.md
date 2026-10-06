@@ -22,8 +22,9 @@ waits 1 minute and then checks in. Saying yes buys you one base interval
 never earn you longer gaps. Time spent off task is cumulative: 40 seconds in
 Messages and then 20 in an unlisted tab still trips at 60.
 
-**Blocked apps.** Anything on the blocked list gets a much shorter fuse: 10
-seconds after you focus it.
+**Disapproved apps.** Anything on the disapproved list gets a much shorter
+fuse: 10 seconds after you focus it. OnTask never blocks anything; it only
+checks in sooner.
 
 **Offering to approve.** Say yes three times in a row about the same app or
 site and OnTask offers to add it to the approved list for you.
@@ -62,7 +63,7 @@ Everything hangs off the menu bar icon:
 | Pause / Resume | Stops the clock and the reminders without losing elapsed time. |
 | Profile | Switch work mode; each has its own lists. |
 | Approve *thing* | Adds whatever you are looking at to the approved list. |
-| Block *thing* | Adds it to the blocked list instead. |
+| Disapprove *thing* | Adds it to the disapproved list instead. |
 | Settings... | Opens the settings window. |
 | Permissions... | Shows which grants are active and how to fix the missing ones. |
 
@@ -146,8 +147,8 @@ Sounds are separate settings: one for the check-in appearing, one for answering.
 days, or today:
 
 - time in sessions, how many, and the average length, broken down by profile;
-- time spent off task, how much of that was on blocked apps and sites, and what
-  share of your session time it came to;
+- time spent off task, how much of that was on disapproved apps and sites, and
+  what share of your session time it came to;
 - check-ins answered yes, no, and ignored, and how many were followed by a
   return to approved work within two minutes;
 - which apps and sites pull you away the most;
@@ -174,17 +175,18 @@ One per line, in either list:
 | `youtube.com` | bare, has a dot, so a site |
 
 The **most specific matching rule wins**, so approving `github.com` while
-blocking `github.com/trending` does what you would expect. On a tie, the block
-list wins. Approving a browser itself (`app:Safari`) approves every tab in it.
+disapproving `github.com/trending` does what you would expect. On a tie, the
+disapproved list wins. Approving a browser itself (`app:Safari`) approves every
+tab in it.
 
 ### Answering No
 
 A No means the stretch that just ended was not really work, so by default that
 time comes back off the session clock - as much as the stretch actually was:
-the blocked wait on a blocked site, the off-task wait on something unapproved,
-or a minute on an approved one. Turn it off, or charge a flat amount instead,
-under **Settings → Reminders → When you answer No**. The clock stops at zero
-rather than going negative.
+the disapproved wait on a disapproved site, the off-task wait on something not
+listed, or a minute on an approved one. Turn it off, or charge a flat amount
+instead, under **Settings → Reminders → When you answer No**. The clock stops at
+zero rather than going negative.
 
 ### Profiles
 
@@ -207,13 +209,13 @@ changes within one poll, no restart needed.
 | `intervals_minutes` | `3, 5, 7, 10, 14, 20` | The ladder rungs. |
 | `advance_after_yes` | `1, 2, 2, 3, 3` | Yes answers needed at each rung. Resized automatically to match the rungs. |
 | `distraction_grace_seconds` | `60` | Off-task time before a check-in. |
-| `disapproved_grace_seconds` | `10` | Time on a blocked app before a check-in. |
+| `disapproved_grace_seconds` | `10` | Time on a disapproved app before a check-in. |
 | `suggest_approve_after_yes` | `3` | Consecutive yes answers before offering to approve. `0` disables. |
 | `no_response.policy` | `renag_then_no` | Or `wait`, or `pause_session`. |
 | `no_response.renag_seconds` | `60` | Gap between re-alerts. |
 | `no_response.max_alerts` | `3` | Alerts before it counts as a no. |
 | `clock_penalty.enabled` | `true` | Take time off the session clock when you answer No. |
-| `clock_penalty.match_situation` | `true` | Take off as much as the stretch you were in: the blocked wait on a blocked site, the off-task wait on something unapproved, `approved_seconds` on an approved one. |
+| `clock_penalty.match_situation` | `true` | Take off as much as the stretch you were in: the disapproved wait on a disapproved site, the off-task wait on something not listed, `approved_seconds` on an approved one. |
 | `clock_penalty.approved_seconds` | `60` | Taken off for a No during a normal cadence check-in. |
 | `clock_penalty.fixed_seconds` | `60` | Taken off for every No when `match_situation` is off. |
 | `poll_seconds` | `2.0` | How often the frontmost window is sampled during a session. With no session, or a paused one, it isn't sampled at all. |

@@ -17,7 +17,7 @@ from .__main__ import self_command
 from .core import engine as eng
 from .core.config import Config, Profile
 from .core.engine import Engine, format_duration
-from .core.matching import classify, suggest_rule
+from .core.matching import STATUS_LABELS, classify, suggest_rule
 from .focus import UNKNOWN, FocusTarget, get_provider
 from .stats import Stats, default_stats_path
 
@@ -258,13 +258,17 @@ class Controller:
         if not self.target.is_unknown:
             rule = suggest_rule(self.target)
             self.add_rule(rule, "approved")
-            self.shell.notify("OnTask", f"Added {rule} to {self.config.active_profile}.")
+            self.shell.notify(
+                "OnTask", f"Added {rule} to the approved list for {self.config.active_profile}."
+            )
 
-    def block_current(self) -> None:
+    def disapprove_current(self) -> None:
         if not self.target.is_unknown:
             rule = suggest_rule(self.target)
             self.add_rule(rule, "disapproved")
-            self.shell.notify("OnTask", f"Blocked {rule} in {self.config.active_profile}.")
+            self.shell.notify(
+                "OnTask", f"Added {rule} to the disapproved list for {self.config.active_profile}."
+            )
 
     # -- settings ---------------------------------------------------------
 
@@ -357,7 +361,7 @@ class Controller:
             return "unknown"
         profile = self.config.profile()
         status = classify(self.target, profile.approved, profile.disapproved).status
-        return f"{self.target.describe()} - {status}"
+        return f"{self.target.describe()} - {STATUS_LABELS[status]}"
 
 
 def _times(count: int) -> str:

@@ -114,7 +114,7 @@ class OnTaskApp(rumps.App):
         self.pause_item = rumps.MenuItem("Pause", callback=self._pause)
         self.profile_menu = rumps.MenuItem("Profile")
         self.approve_item = rumps.MenuItem("Approve Current", callback=self._approve)
-        self.block_item = rumps.MenuItem("Block Current", callback=self._block)
+        self.disapprove_item = rumps.MenuItem("Disapprove Current", callback=self._disapprove)
         self.menu = [
             *self.status_items.values(),
             None,
@@ -123,7 +123,7 @@ class OnTaskApp(rumps.App):
             None,
             self.profile_menu,
             self.approve_item,
-            self.block_item,
+            self.disapprove_item,
             None,
             rumps.MenuItem("Settings...", callback=self._settings),
             rumps.MenuItem("Statistics...", callback=self._statistics),
@@ -154,8 +154,8 @@ class OnTaskApp(rumps.App):
     def _approve(self, _sender) -> None:
         self.controller.approve_current()
 
-    def _block(self, _sender) -> None:
-        self.controller.block_current()
+    def _disapprove(self, _sender) -> None:
+        self.controller.disapprove_current()
 
     def _settings(self, _sender) -> None:
         self.controller.open_settings()
@@ -195,7 +195,7 @@ class OnTaskApp(rumps.App):
         """Read the frontmost app just before the menu shows.
 
         Opening a menu bar menu leaves the app you were in at the front, so
-        this is what the focus line and Approve/Block act on - with or without
+        this is what the focus line and Approve/Disapprove act on - with or without
         a session running.
         """
         self.controller.look_now()
@@ -366,7 +366,7 @@ class OnTaskApp(rumps.App):
         self.pause_item.set_callback(self._pause if snap.phase != IDLE else None)
         label = self.controller.target.label() if not self.controller.target.is_unknown else ""
         self.approve_item.title = f"Approve {label}" if label else "Approve Current"
-        self.block_item.title = f"Block {label}" if label else "Block Current"
+        self.disapprove_item.title = f"Disapprove {label}" if label else "Disapprove Current"
 
         if set(self._profile_items) != set(self.controller.config.profile_names()):
             self._rebuild_profiles()

@@ -469,8 +469,9 @@ class MenuBarIdleTest(unittest.TestCase):
     def test_opening_the_menu_reads_the_front_app_with_no_session(self):
         self.app._menu_will_open()
         self.focus.current.assert_called_once()
-        self.assertEqual(self.app.status_items["focus"].title, "Focus: Messages - unapproved")
+        self.assertEqual(self.app.status_items["focus"].title, "Focus: Messages - not listed")
         self.assertEqual(self.app.approve_item.title, "Approve Messages")
+        self.assertEqual(self.app.disapprove_item.title, "Disapprove Messages")
 
     def test_a_poll_in_session_leaves_the_clock_to_its_own_timer(self):
         self.app.controller.start_session()
@@ -533,6 +534,12 @@ class MenuBarIdleTest(unittest.TestCase):
         self.app.refresh()
         self.app.refresh()
         status_item.button.return_value.setAttributedTitle_.assert_not_called()
+
+    def test_with_nothing_detected_the_items_say_current(self):
+        self.focus.current.return_value = FocusTarget()
+        self.app._menu_will_open()
+        self.assertEqual(self.app.approve_item.title, "Approve Current")
+        self.assertEqual(self.app.disapprove_item.title, "Disapprove Current")
 
     def test_the_menu_has_the_opening_delegate(self):
         self.assertIs(self.app._menu._menu.delegate(), self.app._menu_opening)

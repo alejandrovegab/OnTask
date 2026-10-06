@@ -84,9 +84,9 @@ class SettingsWindow:
         ).pack(anchor="w")
         self.approved_text = tk.Text(right, height=9, wrap="none", undo=True)
         self.approved_text.pack(fill="both", expand=True, pady=(4, 10))
-        ttk.Label(right, text="Blocked apps and sites (reminds after the short fuse below)").pack(
-            anchor="w"
-        )
+        ttk.Label(
+            right, text="Disapproved apps and sites (reminds after the short fuse below)"
+        ).pack(anchor="w")
         self.disapproved_text = tk.Text(right, height=6, wrap="none", undo=True)
         self.disapproved_text.pack(fill="both", expand=True, pady=(4, 6))
         ttk.Label(right, text=RULE_HELP, foreground="#666", justify="left").pack(anchor="w")
@@ -113,11 +113,14 @@ class SettingsWindow:
         timing_box = ttk.LabelFrame(tab, text="Distraction timing", padding=10)
         timing_box.pack(fill="x", pady=(12, 0))
         self.distraction_var = tk.StringVar()
-        self.blocked_var = tk.StringVar()
+        self.disapproved_var = tk.StringVar()
         self.suggest_var = tk.StringVar()
         self._row(timing_box, 0, "Remind after this long off task (seconds)", self.distraction_var)
         self._row(
-            timing_box, 1, "Remind after this long on a blocked app (seconds)", self.blocked_var
+            timing_box,
+            1,
+            "Remind after this long on a disapproved app (seconds)",
+            self.disapproved_var,
         )
         self._row(
             timing_box,
@@ -147,7 +150,7 @@ class SettingsWindow:
         self.penalty_match_check.grid(row=1, column=0, columnspan=2, sticky="w", padx=(18, 0))
         self.penalty_explain = ttk.Label(
             penalty_box,
-            text="On a blocked app or site, takes off the blocked wait above.\n"
+            text="On a disapproved app or site, takes off the disapproved wait above.\n"
             "On something not on the approved list, takes off the off-task wait above.",
             foreground="#666",
             justify="left",
@@ -301,7 +304,7 @@ class SettingsWindow:
         self.intervals_var.set(", ".join(_fmt(v) for v in cfg.reminder.intervals_minutes))
         self.advance_var.set(", ".join(str(v) for v in cfg.reminder.advance_after_yes))
         self.distraction_var.set(_fmt(cfg.reminder.distraction_grace_seconds))
-        self.blocked_var.set(_fmt(cfg.reminder.disapproved_grace_seconds))
+        self.disapproved_var.set(_fmt(cfg.reminder.disapproved_grace_seconds))
         self.suggest_var.set(str(cfg.reminder.suggest_approve_after_yes))
         penalty = cfg.reminder.clock_penalty
         self.penalty_on_var.set(penalty.enabled)
@@ -475,7 +478,9 @@ class SettingsWindow:
             int(v) for v in _numbers(self.advance_var.get(), "Advance counts")
         ]
         reminder.distraction_grace_seconds = _number(self.distraction_var.get(), "Off-task seconds")
-        reminder.disapproved_grace_seconds = _number(self.blocked_var.get(), "Blocked app seconds")
+        reminder.disapproved_grace_seconds = _number(
+            self.disapproved_var.get(), "Disapproved app seconds"
+        )
         reminder.suggest_approve_after_yes = int(_number(self.suggest_var.get(), "Yes answers"))
         reminder.clock_penalty = ClockPenalty(
             enabled=bool(self.penalty_on_var.get()),
