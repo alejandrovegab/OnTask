@@ -10,9 +10,22 @@ made the statistics window misbehave:
   fractions of that.
 * X11 sends no wheel event at all, only button 4 (up) and button 5 (down).
 
+Sideways scrolling arrives as the same wheel event with Shift held: macOS
+splits each trackpad movement into a vertical event and, for any sideways
+drift of the fingers, a horizontal one right behind it. Read as vertical, that
+drift (usually against the swipe) stepped the view back off the bottom and the
+next tick pushed it back again, shaking the report. These views only scroll
+vertically, so horizontal events are ignored.
+
 `wheel_steps` turns any of those into a signed number of steps, keeping the
 direction symmetric, and `WheelScroller` adds them up so fractional touchpad
 movement accumulates smoothly instead of being lost or rounded into jumps.
+
+The view is moved in exact pixels and stopped at the content's real edges.
+Letting Tk scroll by "units" instead rounds the view to whole steps, which
+carried it past the end of the report, and kept redrawing everything for each
+trackpad momentum tick that arrived once the edge was reached: the jitter at
+the top and bottom of a fast swipe.
 """
 
 from __future__ import annotations
@@ -33,9 +46,14 @@ WINDOWS_NOTCH = 120
 
 WHEEL_EVENTS = ("<MouseWheel>", "<Button-4>", "<Button-5>")
 
+# Set in a wheel event's state when Tk means horizontal scrolling.
+SHIFT_MASK = 0x0001
+
 
 def wheel_steps(event, platform: str = sys.platform) -> float:
-    """Signed scroll steps for one wheel event. Positive scrolls down."""
+    """Signed vertical scroll steps for one wheel event. Positive scrolls down."""
+    if int(getattr(event, "state", 0) or 0) & SHIFT_MASK:
+        return 0.0
     number = getattr(event, "num", None)
     if number == 4:
         return -float(STEPS_PER_NOTCH)
@@ -56,7 +74,9 @@ class WheelScroller:
         self.canvas = canvas
         self.platform = platform
         self._pending = 0.0
-        canvas.configure(yscrollincrement=STEP_PIXELS)
+        # Scroll by single pixels: a coarser increment makes Tk round the view
+        # to it, which overshoots the end of the content.
+        canvas.configure(yscrollincrement=1)
         # Bound once, application-wide: on Windows Tk delivers the wheel to the
         # focused widget rather than the one under the pointer, so the handler
         # works out for itself whether the pointer is over this area.
@@ -69,13 +89,46 @@ class WheelScroller:
         self.scroll(wheel_steps(event, self.platform))
 
     def scroll(self, steps: float) -> int:
-        """Add `steps` and scroll by however many whole steps are now due."""
+        """Add `steps`, move by whatever whole steps are now due.
+
+        Returns the pixels actually moved, which is less than asked for at the
+        top or bottom.
+        """
         self._pending += steps
         whole = int(self._pending)  # truncates toward zero: symmetric
-        if whole:
-            self._pending -= whole
-            self.canvas.yview_scroll(whole, "units")
-        return whole
+        if not whole:
+            return 0
+        self._pending -= whole
+        wanted = whole * STEP_PIXELS
+        moved = self._move_by(wanted)
+        if moved != wanted:
+            # Hit an edge. Momentum still arriving must not pile up here and
+            # then fire the moment the swipe reverses.
+            self._pending = 0.0
+        return moved
+
+    def _move_by(self, pixels: int) -> int:
+        """Move the view by `pixels`, stopping exactly at the content's edges."""
+        top, height = self._region()
+        visible = self.canvas.winfo_height()
+        if height <= visible:
+            return 0
+        current = round(self.canvas.canvasy(0) - top)
+        target = min(max(current + pixels, 0), height - visible)
+        if target == current:
+            # Already at the edge: do nothing at all, so a stream of momentum
+            # ticks costs no redraws.
+            return 0
+        self.canvas.yview_moveto(target / height)
+        return target - current
+
+    def _region(self) -> tuple[float, float]:
+        """Top and height of the canvas's scroll region."""
+        try:
+            _x0, y0, _x1, y1 = (float(v) for v in str(self.canvas.cget("scrollregion")).split())
+        except ValueError:
+            return 0.0, 0.0
+        return y0, y1 - y0
 
     def _pointer_inside(self, event) -> bool:
         try:

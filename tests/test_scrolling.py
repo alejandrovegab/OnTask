@@ -17,8 +17,11 @@ except Exception:
     HAVE_TK = False
 
 
-def wheel(delta=0, num=None):
-    return SimpleNamespace(delta=delta, num=num, x_root=0, y_root=0)
+def wheel(delta=0, num=None, state=0):
+    return SimpleNamespace(delta=delta, num=num, state=state, x_root=0, y_root=0)
+
+
+SHIFT = 0x0001
 
 
 @unittest.skipUnless(HAVE_TK, "no Tk display")
@@ -35,44 +38,107 @@ class WheelStepsTest(unittest.TestCase):
         self.assertEqual(wheel_steps(wheel(num=4), "linux"), -STEPS_PER_NOTCH)
         self.assertEqual(wheel_steps(wheel(num=5), "linux"), STEPS_PER_NOTCH)
 
+    def test_sideways_scrolling_is_ignored(self):
+        for platform in ("darwin", "win32"):
+            self.assertEqual(wheel_steps(wheel(2, state=SHIFT), platform), 0)
+        # Other modifiers (here a held mouse button) don't make it sideways.
+        self.assertEqual(wheel_steps(wheel(-2, state=0x100), "darwin"), 2)
+
 
 @unittest.skipUnless(HAVE_TK, "no Tk display")
 class WheelScrollerTest(unittest.TestCase):
+    """A real, mapped canvas: the edge behaviour depends on Tk's own geometry."""
+
+    VISIBLE = 300
+    CONTENT = 1007  # deliberately not a multiple of the 16 px step
+    BOTTOM = CONTENT - VISIBLE
+
     def setUp(self):
         self.root = tk.Tk()
-        self.root.withdraw()
+        self.root.geometry(f"300x{self.VISIBLE}+-3000+-3000")  # off-screen
         self.addCleanup(self.root.destroy)
         self.area = tk.Frame(self.root)
-        self.canvas = tk.Canvas(self.area)
+        self.area.pack(fill="both", expand=True)
+        self.canvas = tk.Canvas(self.area, highlightthickness=0)
+        self.canvas.pack(fill="both", expand=True)
+        self.canvas.configure(scrollregion=(0, 0, 300, self.CONTENT))
         self.scroller = WheelScroller(self.area, self.canvas, platform="darwin")
-        self.scrolled = []
-        self.canvas.yview_scroll = lambda n, what: self.scrolled.append(n)
+        self.root.update()
+
+    def top(self):
+        self.root.update()
+        return round(self.canvas.canvasy(0))
+
+    def test_a_step_moves_sixteen_pixels(self):
+        self.assertEqual(self.scroller.scroll(1), 16)
+        self.assertEqual(self.top(), 16)
 
     def test_both_directions_move_the_same_amount(self):
         # The original bug: -1 // 3 is -1 but 1 // 3 is 0, so one way stuck.
+        self.canvas.yview_moveto(320 / self.CONTENT)
         for _ in range(5):
             self.scroller.scroll(1)
+        self.assertEqual(self.top(), 320 + 80)
         for _ in range(5):
             self.scroller.scroll(-1)
-        self.assertEqual(sum(s for s in self.scrolled if s > 0), 5)
-        self.assertEqual(sum(s for s in self.scrolled if s < 0), -5)
+        self.assertEqual(self.top(), 320)
 
     def test_fractional_touchpad_movement_adds_up(self):
         for _ in range(8):
             self.scroller.scroll(0.25)  # a Windows precision touchpad, say
-        self.assertEqual(sum(self.scrolled), 2)
+        self.assertEqual(self.top(), 32)
 
-    def test_steps_are_small_fixed_pixels(self):
-        self.assertEqual(int(self.canvas.cget("yscrollincrement")), 16)
+    def test_the_bottom_is_reached_exactly_not_overshot(self):
+        for _ in range(100):
+            self.scroller.scroll(1)
+        self.assertEqual(self.top(), self.BOTTOM)  # Tk's own units stopped at 720
+
+    def test_momentum_at_an_edge_does_not_redraw(self):
+        for _ in range(100):
+            self.scroller.scroll(1)
+        with mock.patch.object(self.canvas, "yview_moveto") as moveto:
+            for _ in range(20):
+                self.assertEqual(self.scroller.scroll(1), 0)
+        moveto.assert_not_called()
+        self.canvas.yview_moveto(0)
+        self.assertEqual(self.top(), 0)
+        with mock.patch.object(self.canvas, "yview_moveto") as moveto:
+            for _ in range(20):
+                self.assertEqual(self.scroller.scroll(-1), 0)
+        moveto.assert_not_called()
+
+    def test_leftover_momentum_is_dropped_at_the_edge(self):
+        for _ in range(100):
+            self.scroller.scroll(1)
+        self.scroller.scroll(0.9)  # a partial step, then the edge
+        self.scroller.scroll(1)
+        self.assertEqual(self.scroller._pending, 0)
+        self.assertEqual(self.scroller.scroll(-1), -16, "reversing moves at once")
+
+    def test_content_shorter_than_the_window_never_moves(self):
+        self.canvas.configure(scrollregion=(0, 0, 300, 200))
+        self.assertEqual(self.scroller.scroll(5), 0)
 
     def test_only_scrolls_with_the_pointer_over_the_area(self):
         elsewhere = tk.Frame(self.root)
         with mock.patch.object(self.area, "winfo_containing", return_value=elsewhere):
             self.scroller.on_wheel(wheel(-3))
-        self.assertEqual(self.scrolled, [])
+        self.assertEqual(self.top(), 0)
         with mock.patch.object(self.area, "winfo_containing", return_value=self.canvas):
             self.scroller.on_wheel(wheel(-3))
-        self.assertEqual(self.scrolled, [3])
+        self.assertEqual(self.top(), 48)
+
+    def test_sideways_drift_does_not_shake_the_bottom(self):
+        # A real swipe into the bottom on macOS: each vertical event (state 0)
+        # is followed by the fingers' sideways drift (Shift), against it.
+        swipe = [(-6, 0), (1, SHIFT), (-7, 0), (2, SHIFT), (-3, 0), (-7, 0), (1, SHIFT)]
+        self.canvas.yview_moveto(self.BOTTOM / self.CONTENT)
+        tops = []
+        with mock.patch.object(self.area, "winfo_containing", return_value=self.canvas):
+            for delta, state in swipe:
+                self.scroller.on_wheel(wheel(delta, state=state))
+                tops.append(self.top())
+        self.assertEqual(set(tops), {self.BOTTOM})  # was 691 / 707 alternating
 
 
 if __name__ == "__main__":
