@@ -4,9 +4,10 @@ The banner carries real Yes and No buttons, so `prompt_ui = "notification"` is
 answerable without the floating window.
 
 Delivery is never assumed. Authorisation is *read* at startup with
-`getNotificationSettings`, which never shows a dialog; the permission prompt is
-only raised when notification mode is actually selected. If notifications are
-denied or undelivered, `available()` says so and the shell falls back to the
+`getNotificationSettings`, which never shows a dialog, then requested once the
+app has finished launching, whatever the check-in style; macOS only shows its
+dialog while the answer is undecided. If notifications are denied or
+undelivered, `available()` says so and the shell falls back to the
 floating window rather than leaving a check-in that cannot be answered.
 
 Note that an unbundled process posts under whichever app owns the interpreter,
@@ -157,7 +158,7 @@ class Notifier:
             self.error = str(exc)
 
     def request_authorization(self) -> None:
-        """Raise the system permission prompt. Only for notification mode.
+        """Ask for permission. macOS shows a dialog only if it is undecided.
 
         Safe only while a run loop is running, which is why nothing calls this
         during construction.

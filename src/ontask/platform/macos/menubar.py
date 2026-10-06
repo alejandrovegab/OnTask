@@ -393,6 +393,19 @@ class OnTaskApp(rumps.App):
         if item is not None:
             item.button().setAttributedTitle_(clock_title(text))
 
+    # -- permissions ------------------------------------------------------
+
+    def ask_for_notifications(self) -> None:
+        """Ask for notification permission, whatever the check-in style.
+
+        Called on every launch. macOS shows its dialog only while the answer is
+        still undecided, so in practice that means the first launch; after that
+        the request just reports the stored answer. Banners carry more than
+        check-ins (confirmations, "Nice. Next check-in..."), so waiting for a
+        banner check-in style left those silent with the default window.
+        """
+        self.notifier.request_authorization()
+
     # -- diagnostics ------------------------------------------------------
 
     def permissions_report(self) -> str:
@@ -437,10 +450,12 @@ def _running_app():
 
 
 def _install_delegate() -> None:
-    """Add reopen and terminate handling to rumps' application delegate.
+    """Add launch, reopen and terminate handling to rumps' application delegate.
 
-    Two things AppKit tells the delegate that OnTask needs:
+    Three things AppKit tells the delegate that OnTask needs:
 
+    * a *finished launching*, the first moment the run loop is up, which is
+      when the notification permission can safely be asked for;
     * a *reopen*, which is what launching an already-running app produces -
       macOS never starts a second copy of a bundled app, so this is the only
       way a Spotlight launch can reach the instance that is running;
@@ -451,7 +466,7 @@ def _install_delegate() -> None:
     SIGTERM handler is never invoked, whichever thread installs it.
 
     rumps builds its delegate from a module-level class, so substituting a
-    subclass adds both without forking rumps.
+    subclass adds these without forking rumps.
     """
     try:
         base = rumps.rumps.NSApp
@@ -459,6 +474,16 @@ def _install_delegate() -> None:
         return
 
     class OnTaskNSApp(base):
+        def applicationDidFinishLaunching_(self, notification):
+            # rumps watches for sleep and wake here.
+            objc.super(OnTaskNSApp, self).applicationDidFinishLaunching_(notification)
+            app = _running_app()
+            if app is not None:
+                try:
+                    app.ask_for_notifications()
+                except Exception:
+                    pass
+
         def applicationShouldHandleReopen_hasVisibleWindows_(self, sender, has_windows):
             app = _running_app()
             if app is not None:
