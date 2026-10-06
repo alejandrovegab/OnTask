@@ -155,6 +155,8 @@ Planned work, roughly in order. Each item lands as its own reviewed pull request
 - [User guide](docs/guide.md): every rule, menu item, browser detail and setting.
 - [Development](docs/development.md): setup, tests, tooling and code layout.
 - [Maintaining](docs/maintaining.md): signing, dependencies and release chores.
+- [Changelog](CHANGELOG.md): what changed in each version.
+- [Security policy](SECURITY.md): how to report a vulnerability privately.
 
 ## License
 
