@@ -1,7 +1,7 @@
 """Notification delivery, permission handling, and check-in routing.
 
 Nothing here posts a real banner or raises a permission dialog: the notifier is
-either stubbed or constructed with its status forced.
+either stubbed or constructed with its status forced, and the app is never run.
 """
 
 import tempfile
@@ -258,6 +258,37 @@ class PromptRoutingTest(unittest.TestCase):
         self.assertIn("Notifications:", report)
         self.assertIn("Accessibility:", report)
         self.assertIn("Global hotkeys:", report)
+
+    def test_permission_is_asked_for_with_the_window_style_too(self):
+        # Banners also carry confirmations, so the default style must ask too.
+        self._set_mode("window")
+        self.app.ask_for_notifications()
+        self.app.notifier.request_authorization.assert_called_once()
+
+
+@unittest.skipUnless(HAVE_MAC_UI, "macOS UI stack not installed")
+class LaunchAsksForNotificationsTest(unittest.TestCase):
+    def test_finishing_launch_asks_for_notifications(self):
+        from Foundation import NSObject
+
+        from ontask.platform.macos import menubar
+
+        seen = []
+
+        class _RumpsDelegateStandIn(NSObject):
+            def applicationDidFinishLaunching_(self, notification):
+                seen.append("rumps")
+
+        app = mock.Mock()
+        app.ask_for_notifications.side_effect = lambda: seen.append("asked")
+        with (
+            mock.patch("rumps.rumps.NSApp", _RumpsDelegateStandIn),
+            mock.patch.object(menubar, "_running_app", return_value=app),
+        ):
+            menubar._install_delegate()
+            delegate = menubar.rumps.rumps.NSApp.alloc().init()
+            delegate.applicationDidFinishLaunching_(None)
+        self.assertEqual(seen, ["rumps", "asked"], "rumps' own launch work still runs first")
 
 
 @unittest.skipUnless(HAVE_MAC_UI, "macOS UI stack not installed")
