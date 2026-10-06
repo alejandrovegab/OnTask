@@ -12,7 +12,8 @@ from pathlib import Path
 
 import objc
 import rumps
-from Foundation import NSObject
+from AppKit import NSAttributedString, NSFont, NSFontAttributeName, NSFontWeightRegular
+from Foundation import NSDate, NSObject, NSRunLoop, NSRunLoopCommonModes
 
 from ...app import Controller
 from ...core.engine import IDLE, PAUSED, RUNNING, ActivePrompt, format_duration
@@ -25,6 +26,13 @@ STATUS_SLOTS = ("session", "profile", "interval", "next", "focus")
 # The menu bar clock is redrawn on its own timer. Tying it to the focus poll
 # made the seconds jump in whatever step `poll_seconds` happened to be.
 CLOCK_SECONDS = 1.0
+
+# With no session running (or paused), the poll only checks for a second launch
+# and for saved settings, so it keeps this pace whatever `poll_seconds` is.
+IDLE_POLL_SECONDS = 2.0
+
+# How far the clock's redraw may wander from mid-second before it is moved back.
+CLOCK_SLACK_SECONDS = 0.25
 
 
 class _Waker(NSObject):
@@ -52,6 +60,23 @@ class _Waker(NSObject):
             pass
 
 
+class _MenuOpening(NSObject):
+    """The status menu's delegate: says when the menu is about to appear."""
+
+    def initWithCallback_(self, callback):
+        self = objc.super(_MenuOpening, self).init()
+        if self is None:
+            return None
+        self._callback = callback
+        return self
+
+    def menuWillOpen_(self, _menu):
+        try:
+            self._callback()
+        except Exception:
+            pass
+
+
 class OnTaskApp(rumps.App):
     def __init__(self, config_path: Path | None = None) -> None:
         super().__init__("OnTask", title="OnTask", quit_button=None)
@@ -63,20 +88,23 @@ class OnTaskApp(rumps.App):
         self._pending: ActivePrompt | None = None
         self._profile_items: dict[str, rumps.MenuItem] = {}
         self._warned_notifications = False
-        self._poll_seconds = self.controller.config.general.poll_seconds
+        self._shown_title: str | None = None
         self._waker = _Waker.alloc().initWithCallback_(self._wake)
         self.controller.set_wake_hook(self._waker.wake)
         self._build_menu()
+        # AppKit holds a menu's delegate weakly, so this reference keeps it alive.
+        self._menu_opening = _MenuOpening.alloc().initWithCallback_(self._menu_will_open)
+        self._menu._menu.setDelegate_(self._menu_opening)
         self.hotkeys.start()
-        self.refresh()
-        self.timer = rumps.Timer(self._tick, self._poll_seconds)
-        self.timer.start()
-        if not self.controller.config.setup_complete:
-            self.controller.open_first_run()
+        # `refresh` starts the timers, at the pace the session state calls for.
+        self.timer = rumps.Timer(self._tick, IDLE_POLL_SECONDS)
+        self._poll_seconds: float | None = None
         # A second, faster timer keeps the clock ticking every second without
         # sampling the frontmost window that often.
         self.clock_timer = rumps.Timer(self._clock_tick, CLOCK_SECONDS)
-        self.clock_timer.start()
+        self.refresh()
+        if not self.controller.config.setup_complete:
+            self.controller.open_first_run()
 
     # -- menu -------------------------------------------------------------
 
@@ -148,7 +176,11 @@ class OnTaskApp(rumps.App):
 
     def _tick(self, _timer) -> None:
         self.controller.poll()
-        self.refresh()
+        # In a session the clock timer redraws within a second anyway. Redrawing
+        # here too, at whatever point in the second the poll lands, would turn
+        # the clock over early every couple of seconds.
+        if not self.clock_timer.is_alive():
+            self.refresh()
 
     def _clock_tick(self, _timer) -> None:
         """Redraw only. The engine is not advanced here; `poll` owns timing."""
@@ -158,6 +190,54 @@ class OnTaskApp(rumps.App):
         """Run queued hotkey actions at once, on the main thread."""
         self.controller.wake()
         self.refresh()
+
+    def _menu_will_open(self) -> None:
+        """Read the frontmost app just before the menu shows.
+
+        Opening a menu bar menu leaves the app you were in at the front, so
+        this is what the focus line and Approve/Block act on - with or without
+        a session running.
+        """
+        self.controller.look_now()
+        self.refresh()
+
+    def _pace_timers(self, phase: str) -> None:
+        """Run the timers only as often as the session state needs.
+
+        rumps ignores an interval change on a timer that started less than one
+        interval ago, so a change of pace restarts the timer instead.
+        """
+        running = phase == RUNNING
+        interval = self.controller.config.general.poll_seconds if running else IDLE_POLL_SECONDS
+        if interval != self._poll_seconds:
+            self._poll_seconds = interval
+            self.timer.stop()
+            self.timer.interval = interval
+            self.timer.start()
+            keep_running_in_menus(self.timer)
+        # Idle or paused, the menu bar title does not change from second to second.
+        if running and not self.clock_timer.is_alive():
+            self.clock_timer.start()
+            keep_running_in_menus(self.clock_timer)
+        elif not running and self.clock_timer.is_alive():
+            self.clock_timer.stop()
+
+    def _align_clock(self, elapsed: float) -> None:
+        """Keep the clock's redraws halfway between its seconds.
+
+        A redraw that lands right as a second turns over shows it late whenever
+        the main thread is held up (a poll asking a browser for its tab), and
+        the next one then follows quickly. Mid-second, a delay of up to half a
+        second changes nothing on screen. The phase shifts when a session is
+        resumed or time is taken off the clock, so it is checked on each redraw.
+        """
+        nstimer = getattr(self.clock_timer, "_nstimer", None)
+        if nstimer is None:
+            return
+        wanted = seconds_to_mid_second(elapsed)
+        scheduled = nstimer.fireDate().timeIntervalSinceNow()
+        if phase_gap(scheduled, wanted) > CLOCK_SLACK_SECONDS:
+            nstimer.setFireDate_(NSDate.dateWithTimeIntervalSinceNow_(wanted))
 
     def _on_answer(self, yes: bool) -> None:
         self.controller.answer(yes)
@@ -256,11 +336,11 @@ class OnTaskApp(rumps.App):
         snap = self.controller.snapshot()
         general = self.controller.config.general
         if general.show_elapsed_in_menu_bar and snap.phase != IDLE:
-            self.title = (
+            self._show_title(
                 f"{'*' if snap.phase == RUNNING else '||'} {format_duration(snap.elapsed_seconds)}"
             )
         else:
-            self.title = "OnTask"
+            self._show_title("OnTask")
 
         lines = {
             "session": (
@@ -293,9 +373,25 @@ class OnTaskApp(rumps.App):
         for name, item in self._profile_items.items():
             item.state = 1 if name == snap.profile else 0
 
-        if general.poll_seconds != self._poll_seconds:
-            self._poll_seconds = general.poll_seconds
-            self.timer.interval = self._poll_seconds
+        self._pace_timers(snap.phase)
+        if snap.phase == RUNNING:
+            self._align_clock(snap.elapsed_seconds)
+
+    def _show_title(self, text: str) -> None:
+        """Set the menu bar text, with digits that all take the same width.
+
+        In the normal font a "1" is narrower than an "8", so the ticking clock
+        nudged everything beside it sideways. Before the run loop starts there
+        is no status item yet; rumps draws the plain title at launch and the
+        next change replaces it.
+        """
+        if text == self._shown_title:
+            return
+        self._shown_title = text
+        self.title = text
+        item = getattr(getattr(self, "_nsapp", None), "nsstatusitem", None)
+        if item is not None:
+            item.button().setAttributedTitle_(clock_title(text))
 
     # -- diagnostics ------------------------------------------------------
 
@@ -391,3 +487,39 @@ def run(config_path: Path | None = None) -> None:
     _hide_dock_icon()
     _install_delegate()
     OnTaskApp(config_path).run()
+
+
+def seconds_to_mid_second(elapsed: float) -> float:
+    """Time until `elapsed` next reaches a whole second plus a half."""
+    return (0.5 - elapsed) % 1.0
+
+
+def phase_gap(a: float, b: float) -> float:
+    """How far apart two once-a-second schedules are, from 0 to 0.5 s."""
+    return abs((a - b + 0.5) % 1.0 - 0.5)
+
+
+def keep_running_in_menus(timer) -> None:
+    """Let a started rumps timer fire while a menu is open.
+
+    rumps schedules timers for the run loop's default mode only, and macOS
+    switches to another mode while it tracks an open menu, so the clock froze
+    until the menu closed. The common modes include both.
+    """
+    nstimer = getattr(timer, "_nstimer", None)
+    if nstimer is not None:
+        NSRunLoop.currentRunLoop().addTimer_forMode_(nstimer, NSRunLoopCommonModes)
+
+
+_clock_font = None
+
+
+def clock_title(text: str):
+    """`text` in the menu bar's font, with fixed-width digits like Apple's clock."""
+    global _clock_font
+    if _clock_font is None:
+        size = NSFont.menuBarFontOfSize_(0).pointSize()
+        _clock_font = NSFont.monospacedDigitSystemFontOfSize_weight_(size, NSFontWeightRegular)
+    return NSAttributedString.alloc().initWithString_attributes_(
+        text, {NSFontAttributeName: _clock_font}
+    )

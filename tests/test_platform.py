@@ -379,7 +379,7 @@ class MenuBarTest(unittest.TestCase):
             cfg.save(path)
             with (
                 mock.patch("ontask.app.Config.load", return_value=Config.load(path)),
-                mock.patch("rumps.Timer"),
+                mock.patch("rumps.Timer", _FakeTimer),
             ):
                 app = OnTaskApp()
                 self.assertIsNone(app.controller._setup_proc, "no first-run window spawned")
@@ -392,6 +392,179 @@ class MenuBarTest(unittest.TestCase):
                 self.assertTrue(any("Session:" in t for t in titles))
                 self.assertEqual(app.toggle_item.title, "End Session")
                 self.assertIn("Deep Work", app._profile_items)
+
+
+class _FakeTimer:
+    """Stands in for rumps.Timer: records its pace and whether it is running."""
+
+    def __init__(self, callback, interval):
+        self.callback = callback
+        self.interval = interval
+        self.running = False
+        self.starts = 0
+
+    def start(self):
+        self.running = True
+        self.starts += 1
+
+    def stop(self):
+        self.running = False
+
+    def is_alive(self):
+        return self.running
+
+
+@unittest.skipUnless(HAVE_RUMPS and HAVE_PYOBJC, "rumps/PyObjC not installed")
+class MenuBarIdleTest(unittest.TestCase):
+    """With no session running the menu bar app reads nothing on a timer."""
+
+    def setUp(self):
+        from ontask.core.config import Config
+        from ontask.platform.macos.menubar import OnTaskApp
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "config.json"
+        cfg = Config()
+        cfg.setup_complete = True
+        cfg.general.hotkeys.toggle_session = ""
+        cfg.general.hotkeys.answer_yes = ""
+        cfg.general.hotkeys.answer_no = ""
+        cfg.general.poll_seconds = 5.0
+        cfg.save(path)
+        with (
+            mock.patch("ontask.app.Config.load", return_value=Config.load(path)),
+            mock.patch("rumps.Timer", _FakeTimer),
+        ):
+            self.app = OnTaskApp()
+        self.focus = self.app.controller.focus = mock.Mock()
+        self.focus.current.return_value = FocusTarget(app_name="Messages")
+
+    def test_idle_the_clock_stops_and_the_poll_slows_to_the_idle_pace(self):
+        from ontask.platform.macos.menubar import IDLE_POLL_SECONDS
+
+        self.assertFalse(self.app.clock_timer.running)
+        self.assertTrue(self.app.timer.running)
+        self.assertEqual(self.app.timer.interval, IDLE_POLL_SECONDS)
+
+    def test_a_session_starts_the_clock_and_the_configured_poll(self):
+        self.app.controller.start_session()
+        self.assertTrue(self.app.clock_timer.running)
+        self.assertEqual(self.app.timer.interval, 5.0)
+
+    def test_pausing_stops_the_clock_again(self):
+        from ontask.platform.macos.menubar import IDLE_POLL_SECONDS
+
+        self.app.controller.start_session()
+        self.app.controller.pause_or_resume()
+        self.assertFalse(self.app.clock_timer.running)
+        self.assertEqual(self.app.timer.interval, IDLE_POLL_SECONDS)
+
+    def test_an_unchanged_pace_does_not_restart_the_poll(self):
+        starts = self.app.timer.starts
+        self.app.refresh()
+        self.app.refresh()
+        self.assertEqual(self.app.timer.starts, starts)
+
+    def test_opening_the_menu_reads_the_front_app_with_no_session(self):
+        self.app._menu_will_open()
+        self.focus.current.assert_called_once()
+        self.assertEqual(self.app.status_items["focus"].title, "Focus: Messages - unapproved")
+        self.assertEqual(self.app.approve_item.title, "Approve Messages")
+
+    def test_a_poll_in_session_leaves_the_clock_to_its_own_timer(self):
+        self.app.controller.start_session()
+        with mock.patch.object(self.app, "refresh") as refresh:
+            self.app._tick(None)
+        refresh.assert_not_called()
+
+    def test_a_poll_with_no_session_still_redraws(self):
+        with mock.patch.object(self.app, "refresh") as refresh:
+            self.app._tick(None)
+        refresh.assert_called_once()
+
+    def test_the_clock_is_moved_to_mid_second(self):
+        self.app.controller.start_session()
+        nstimer = self.app.clock_timer._nstimer = mock.Mock()
+        # Due in 0.9 s, right as 8 s turns over; mid-second is 0.3 s away.
+        nstimer.fireDate.return_value.timeIntervalSinceNow.return_value = 0.9
+        self.app._align_clock(7.2)
+        nstimer.setFireDate_.assert_called_once()
+
+    def test_a_clock_already_near_mid_second_is_left_alone(self):
+        self.app.controller.start_session()
+        nstimer = self.app.clock_timer._nstimer = mock.Mock()
+        nstimer.fireDate.return_value.timeIntervalSinceNow.return_value = 0.25
+        self.app._align_clock(7.2)
+        nstimer.setFireDate_.assert_not_called()
+
+    def test_mid_second_arithmetic(self):
+        from ontask.platform.macos.menubar import phase_gap, seconds_to_mid_second
+
+        self.assertAlmostEqual(seconds_to_mid_second(7.2), 0.3)
+        self.assertAlmostEqual(seconds_to_mid_second(7.5), 0.0)
+        self.assertAlmostEqual(seconds_to_mid_second(7.9), 0.6)
+        # Schedules a whole second apart are the same schedule.
+        self.assertAlmostEqual(phase_gap(0.95, 0.05), 0.1)
+        self.assertAlmostEqual(phase_gap(-0.05, 0.95), 0.0)
+        self.assertAlmostEqual(phase_gap(0.0, 0.5), 0.5)
+
+    def test_the_clock_text_keeps_its_width_as_it_ticks(self):
+        from ontask.platform.macos.menubar import clock_title
+
+        for same_length in (("* 1:11", "* 8:88", "* 4:07"), ("|| 10:00", "|| 47:59")):
+            widths = {clock_title(t).size().width for t in same_length}
+            self.assertEqual(len(widths), 1, same_length)
+
+    def test_the_title_reaches_the_menu_bar_in_the_clock_font(self):
+        status_item = mock.Mock()
+        self.app._nsapp = mock.Mock(nsstatusitem=status_item)
+        self.app.controller.start_session()
+        button = status_item.button.return_value
+        button.setAttributedTitle_.assert_called()
+        shown = button.setAttributedTitle_.call_args[0][0]
+        self.assertEqual(str(shown.string()), "* 0:00")
+        font = shown.attribute_atIndex_effectiveRange_("NSFont", 0, None)[0]
+        self.assertTrue(font.fontDescriptor().objectForKey_("NSCTFontFeatureSettingsAttribute"))
+
+    def test_an_unchanged_title_is_not_redrawn(self):
+        status_item = mock.Mock()
+        self.app._nsapp = mock.Mock(nsstatusitem=status_item)
+        self.app.refresh()
+        self.app.refresh()
+        status_item.button.return_value.setAttributedTitle_.assert_not_called()
+
+    def test_the_menu_has_the_opening_delegate(self):
+        self.assertIs(self.app._menu._menu.delegate(), self.app._menu_opening)
+
+
+@unittest.skipUnless(HAVE_RUMPS and HAVE_PYOBJC, "rumps/PyObjC not installed")
+class TimerInOpenMenuTest(unittest.TestCase):
+    """macOS runs a separate mode while a menu is open; the clock must tick in it."""
+
+    def _fires_while_a_menu_is_open(self, keep_running: bool) -> int:
+        import rumps
+        from Foundation import NSDate, NSRunLoop
+
+        from ontask.platform.macos.menubar import keep_running_in_menus
+
+        fires = []
+        timer = rumps.Timer(lambda _t: fires.append(1), 0.05)
+        timer.start()
+        self.addCleanup(timer.stop)
+        if keep_running:
+            keep_running_in_menus(timer)
+        loop = NSRunLoop.currentRunLoop()
+        deadline = NSDate.dateWithTimeIntervalSinceNow_(0.3)
+        while deadline.timeIntervalSinceNow() > 0:
+            loop.runMode_beforeDate_("NSEventTrackingRunLoopMode", deadline)
+        return len(fires)
+
+    def test_a_plain_rumps_timer_waits_for_the_menu_to_close(self):
+        self.assertEqual(self._fires_while_a_menu_is_open(keep_running=False), 0)
+
+    def test_the_clock_keeps_ticking_with_the_menu_open(self):
+        self.assertGreater(self._fires_while_a_menu_is_open(keep_running=True), 2)
 
 
 @unittest.skipUnless(sys.platform == "darwin", "macOS accessibility API")

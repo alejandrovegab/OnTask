@@ -1,7 +1,9 @@
 """Timing and rule tests. Everything runs on a fake clock, so it is instant."""
 
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ontask.core.config import Config, Profile
 from ontask.core.engine import (
@@ -11,6 +13,7 @@ from ontask.core.engine import (
     Answered,
     Engine,
     RealertPrompt,
+    SessionChanged,
     ShowPrompt,
     SuggestApprove,
     format_duration,
@@ -330,6 +333,44 @@ class SessionTest(unittest.TestCase):
         self.assertNotIn(DISTRACTION, kinds)
         self.assertIn(CADENCE, kinds)
 
+    def test_pausing_keeps_the_time_the_clock_already_showed(self):
+        # Polls at 0 and 2 s; the menu bar reads 3.5 s just before the pause.
+        engine = Engine(make_config(), now=0.0)
+        engine.start(0.0)
+        engine.tick(2.0, APPROVED_APP)
+        shown = engine.snapshot(3.5).elapsed_seconds
+        engine.pause(3.5)
+        self.assertEqual(engine.snapshot(3.5).elapsed_seconds, shown)
+        self.assertEqual(engine.snapshot(9.0).elapsed_seconds, 3.5)
+
+    def test_ending_a_session_banks_the_time_since_the_last_poll(self):
+        engine = Engine(make_config(), now=0.0)
+        engine.start(0.0)
+        engine.tick(2.0, APPROVED_APP)
+        events = engine.stop(3.5)
+        ended = [e for e in events if isinstance(e, SessionChanged)]
+        self.assertEqual(ended[-1].elapsed_seconds, 3.5)
+
+    def test_the_countdown_shown_off_task_does_not_run_ahead(self):
+        # Off approved work the next check-in is on hold, so the display must
+        # not count it down only for the next poll to put it back.
+        engine = Engine(make_config(), now=0.0)
+        engine.start(0.0)
+        engine.tick(2.0, UNLISTED_APP)
+        held = engine.snapshot(2.0).next_prompt_seconds
+        self.assertEqual(engine.snapshot(3.5).next_prompt_seconds, held)
+        engine.tick(4.0, APPROVED_APP)
+        self.assertEqual(engine.snapshot(5.0).next_prompt_seconds, held - 3.0)
+
+    def test_pausing_on_work_keeps_the_countdown_shown(self):
+        engine = Engine(make_config(), now=0.0)
+        engine.start(0.0)
+        engine.tick(2.0, APPROVED_APP)
+        shown = engine.snapshot(3.5).next_prompt_seconds
+        engine.pause(3.5)
+        engine.resume(10.0)
+        self.assertEqual(engine.snapshot(10.0).next_prompt_seconds, shown)
+
     def test_format_duration(self):
         self.assertEqual(format_duration(59), "0:59")
         self.assertEqual(format_duration(605), "10:05")
@@ -418,6 +459,61 @@ class ShellInterfaceTest(unittest.TestCase):
         from ontask.app import Shell
 
         self.assertTrue(issubclass(TkShell, Shell))
+
+
+class IdleSamplingTest(unittest.TestCase):
+    """Only a running session reads the frontmost window on every poll."""
+
+    def setUp(self):
+        from ontask.app import Controller
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "config.json"
+        make_config().save(path)
+        with mock.patch("ontask.app.get_provider") as provider:
+            self.focus = provider.return_value
+            self.focus.current.return_value = APPROVED_APP
+            self.controller = Controller(config_path=path)
+
+    def test_no_session_reads_nothing(self):
+        self.controller.poll()
+        self.controller.poll()
+        self.focus.current.assert_not_called()
+
+    def test_a_running_session_reads_every_poll(self):
+        self.controller.start_session()
+        self.controller.poll()
+        self.controller.poll()
+        self.assertEqual(self.focus.current.call_count, 2)
+        self.assertEqual(self.controller.target, APPROVED_APP)
+
+    def test_a_paused_session_reads_nothing(self):
+        self.controller.start_session()
+        self.controller.pause_or_resume()
+        self.controller.poll()
+        self.focus.current.assert_not_called()
+        self.controller.pause_or_resume()
+        self.controller.poll()
+        self.assertEqual(self.focus.current.call_count, 1)
+
+    def test_look_now_reads_once_even_when_idle(self):
+        # What the menu does as it opens, so its focus line is always current.
+        self.controller.look_now()
+        self.assertEqual(self.focus.current.call_count, 1)
+        self.assertIn("Code - approved", self.controller.current_status_text())
+
+    def test_look_now_survives_a_failing_provider(self):
+        self.focus.current.side_effect = RuntimeError("browser gone")
+        self.controller.look_now()
+        self.assertTrue(self.controller.target.is_unknown)
+
+    def test_the_status_lines_show_focus_only_while_watching(self):
+        self.controller.start_session()
+        self.controller.poll()
+        self.assertTrue(any(line.startswith("Focus:") for line in self.controller.status_lines()))
+        self.controller.pause_or_resume()
+        self.assertFalse(any(line.startswith("Focus:") for line in self.controller.status_lines()))
 
 
 if __name__ == "__main__":

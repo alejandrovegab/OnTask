@@ -69,6 +69,11 @@ Everything hangs off the menu bar icon:
 The top of the menu always shows elapsed time, current profile, where you are on
 the ladder, time until the next check-in, and how the current window classifies.
 
+That last line works with no session running too: OnTask reads the window you
+were in at the moment you open the menu. To check a rule, switch to the app or
+site and click the menu bar icon. Between sessions, and while paused, that is
+the only time OnTask looks at your windows.
+
 ### Hotkeys
 
 | Default | Action |
@@ -211,7 +216,7 @@ changes within one poll, no restart needed.
 | `clock_penalty.match_situation` | `true` | Take off as much as the stretch you were in: the blocked wait on a blocked site, the off-task wait on something unapproved, `approved_seconds` on an approved one. |
 | `clock_penalty.approved_seconds` | `60` | Taken off for a No during a normal cadence check-in. |
 | `clock_penalty.fixed_seconds` | `60` | Taken off for every No when `match_situation` is off. |
-| `poll_seconds` | `2.0` | How often the frontmost window is sampled. |
+| `poll_seconds` | `2.0` | How often the frontmost window is sampled during a session. With no session, or a paused one, it isn't sampled at all. |
 | `prompt_ui` | `window` | Or `notification` (banner with Yes/No buttons), or `both` (banner, escalating to the window if ignored). |
 | `browsers` | Safari only | Browsers that get URL tracking. Each entry records `name`, `bundle_id`, `flavour` and `app_path`; add more from Finder in Settings. |
 | `start_session_on_launch` | `false` | Begin a session at startup. |

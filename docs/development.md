@@ -28,14 +28,18 @@ Every pull request runs CI (`.github/workflows/ci.yml`), and it also runs weekly
 
 ## Performance
 
-OnTask checks the frontmost app every couple of seconds for as long as it runs,
-so that check, `Controller.poll()`, has a budget: a typical poll must take under
+During a session OnTask checks the frontmost app every couple of seconds, so
+that check, `Controller.poll()`, has a budget: a typical poll must take under
 **1 ms**. `tests/test_performance.py` enforces it on every pull request, using
 a fake focus provider and a profile with 100 rules per list. To see the numbers:
 
 ```sh
 ./.venv/bin/python tests/perf_poll.py
 ```
+
+With no session, or a paused one, `poll()` only looks for a second launch and
+for saved settings (every 2 s on macOS), and the menu bar clock stops redrawing.
+The frontmost window is then read only when the menu opens (`look_now`).
 
 ## Code layout
 
