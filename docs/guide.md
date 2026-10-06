@@ -67,7 +67,9 @@ Everything hangs off the menu bar icon:
 | Disapprove *thing* | Adds it to the disapproved list. Shown when it isn't disapproved. |
 | Remove *rule* from Approved / Disapproved | Deletes the rule that decided its status, so it is no longer listed by that rule. Shown when it is on a list. |
 | Settings... | Opens the settings window. |
+| Statistics... | Opens the statistics report (see [Statistics](#statistics)). |
 | Permissions... | Shows which grants are active and how to fix the missing ones. |
+| Quit OnTask | Ends a running session, saves it to your statistics, and quits. |
 
 The top of the menu always shows elapsed time, current profile, where you are on
 the ladder, time until the next check-in, and how the current window classifies.
@@ -86,8 +88,9 @@ broader rule (`docs.google.com` with `google.com` disapproved), you get both:
 **Approve docs.google.com** adds just that site as an exception, and
 **Approve google.com** moves the whole site to the approved list. On a website
 in a browser you approved as a whole (`app:Safari`), the menu offers only to
-disapprove the site; changing the browser's own rule is left to Settings. When OnTask can't tell what is in front, a
-greyed-out "Nothing to approve or disapprove" takes the items' place.
+disapprove the site; changing the browser's own rule is left to Settings. When
+OnTask can't tell what is in front, a greyed-out "Nothing to approve or
+disapprove" takes the items' place.
 
 ### Hotkeys
 
@@ -191,7 +194,8 @@ One per line, in either list:
 The **most specific matching rule wins**, so approving `github.com` while
 disapproving `github.com/trending` does what you would expect. On a tie, the
 disapproved list wins. Approving a browser itself (`app:Safari`) approves every
-tab in it.
+tab in it that you haven't listed; a site you've disapproved still counts as
+disapproved.
 
 ### Answering No
 
@@ -209,6 +213,9 @@ need. Switching profiles applies the new lists immediately without disturbing
 the running session. Add, duplicate, rename, and delete them in Settings.
 
 ## Settings reference
+
+In the Settings window, changes take effect when you click **Save**. **Close**
+throws away anything unsaved, and so does closing the window.
 
 Settings live in a JSON file you can also edit by hand; the running app picks up
 changes within one poll, no restart needed.
