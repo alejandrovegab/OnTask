@@ -1,7 +1,9 @@
 """Timing and rule tests. Everything runs on a fake clock, so it is instant."""
 
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ontask.core.config import Config, Profile
 from ontask.core.engine import (
@@ -418,6 +420,61 @@ class ShellInterfaceTest(unittest.TestCase):
         from ontask.app import Shell
 
         self.assertTrue(issubclass(TkShell, Shell))
+
+
+class IdleSamplingTest(unittest.TestCase):
+    """Only a running session reads the frontmost window on every poll."""
+
+    def setUp(self):
+        from ontask.app import Controller
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "config.json"
+        make_config().save(path)
+        with mock.patch("ontask.app.get_provider") as provider:
+            self.focus = provider.return_value
+            self.focus.current.return_value = APPROVED_APP
+            self.controller = Controller(config_path=path)
+
+    def test_no_session_reads_nothing(self):
+        self.controller.poll()
+        self.controller.poll()
+        self.focus.current.assert_not_called()
+
+    def test_a_running_session_reads_every_poll(self):
+        self.controller.start_session()
+        self.controller.poll()
+        self.controller.poll()
+        self.assertEqual(self.focus.current.call_count, 2)
+        self.assertEqual(self.controller.target, APPROVED_APP)
+
+    def test_a_paused_session_reads_nothing(self):
+        self.controller.start_session()
+        self.controller.pause_or_resume()
+        self.controller.poll()
+        self.focus.current.assert_not_called()
+        self.controller.pause_or_resume()
+        self.controller.poll()
+        self.assertEqual(self.focus.current.call_count, 1)
+
+    def test_look_now_reads_once_even_when_idle(self):
+        # What the menu does as it opens, so its focus line is always current.
+        self.controller.look_now()
+        self.assertEqual(self.focus.current.call_count, 1)
+        self.assertIn("Code - approved", self.controller.current_status_text())
+
+    def test_look_now_survives_a_failing_provider(self):
+        self.focus.current.side_effect = RuntimeError("browser gone")
+        self.controller.look_now()
+        self.assertTrue(self.controller.target.is_unknown)
+
+    def test_the_status_lines_show_focus_only_while_watching(self):
+        self.controller.start_session()
+        self.controller.poll()
+        self.assertTrue(any(line.startswith("Focus:") for line in self.controller.status_lines()))
+        self.controller.pause_or_resume()
+        self.assertFalse(any(line.startswith("Focus:") for line in self.controller.status_lines()))
 
 
 if __name__ == "__main__":

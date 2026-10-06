@@ -41,6 +41,10 @@ def run(config_path: str | None = None) -> int:
     try:
         while True:
             controller.poll()
+            if not controller.watching:
+                # This mode exists to show focus detection, so keep it live
+                # even when a hotkey has paused or ended the session.
+                controller.look_now()
             line = " | ".join(controller.status_lines()[:1] + [controller.current_status_text()])
             if line != last:
                 print(line)

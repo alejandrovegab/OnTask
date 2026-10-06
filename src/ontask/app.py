@@ -116,12 +116,27 @@ class Controller:
         if self._stats_cleared_signal.received():
             self.stats.forget_before(self._stats_cleared_signal.sent_at())
             self.stats.maybe_save(force=True)
+        if self.watching:
+            self.look_now()
+        self._handle(self.engine.tick(target=self.target))
+        self.stats.maybe_save()
+
+    @property
+    def watching(self) -> bool:
+        """Whether each poll reads the frontmost window: only while a session runs.
+
+        With no session, or a paused one, nothing is being counted, so asking
+        the browser for its address every couple of seconds would be wasted
+        work. The shell calls `look_now` when it needs a fresh answer instead.
+        """
+        return self.engine.phase == eng.RUNNING
+
+    def look_now(self) -> None:
+        """Read the frontmost app (and its tab) once, e.g. as the menu opens."""
         try:
             self.target = self.focus.current(self.config.general.browsers)
         except Exception:
             self.target = UNKNOWN
-        self._handle(self.engine.tick(target=self.target))
-        self.stats.maybe_save()
 
     def _handle(self, events) -> None:
         for event in events:
@@ -332,7 +347,9 @@ class Controller:
         ]
         if snap.phase == eng.RUNNING and not snap.prompt_open:
             lines.append(f"Next check-in: {format_duration(snap.next_prompt_seconds)}")
-        lines.append(f"Focus: {self.current_status_text()}")
+        if self.watching:
+            # Paused, the last reading would go stale on screen.
+            lines.append(f"Focus: {self.current_status_text()}")
         return lines
 
     def current_status_text(self) -> str:
