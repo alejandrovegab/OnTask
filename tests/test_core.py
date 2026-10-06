@@ -673,6 +673,35 @@ class RuleActionsTest(unittest.TestCase):
             [("approve", "site:youtube.com"), ("approve", "app:Safari"), ("remove", "app:Safari")],
         )
 
+    def test_an_approved_browser_offers_nothing_about_the_browser(self):
+        actions = _actions(BLOCKED_SITE, ["app:Safari"], [])
+        self.assertEqual(actions, [("disapprove", "site:youtube.com", "disapproved")])
+
+    def test_the_same_rule_written_differently_is_offered_once(self):
+        google = FocusTarget(app_name="Safari", url="https://www.google.com/search")
+        for written in ("google.com", "site:https://google.com", "site:google.com"):
+            with self.subTest(written=written):
+                self.assertEqual(
+                    _actions(google, [], [written]),
+                    [
+                        ("approve", written, "approved"),
+                        ("remove", written, "disapproved"),
+                    ],
+                )
+
+    def test_an_approved_rule_written_differently_is_offered_once(self):
+        # A tie goes to the disapproved list, so here both spellings would work.
+        # "app:code" is the suggested "app:Code" with different capitals.
+        self.assertEqual(
+            _actions(APPROVED_APP, ["app:code"], []),
+            [("disapprove", "app:code", "disapproved"), ("remove", "app:code", "approved")],
+        )
+
+    def test_pages_are_offered_only_when_a_page_rule_decided(self):
+        page = FocusTarget(app_name="Safari", url="https://reddit.com/r/python/comments/1")
+        rules = [rule for _, rule, _ in _actions(page, [], ["site:reddit.com"])]
+        self.assertEqual(rules, ["site:reddit.com", "site:reddit.com"])
+
     def test_remove_names_the_rule_that_decided(self):
         actions = _actions(self.TRENDING, ["site:github.com"], [])
         self.assertIn(("remove", "site:github.com", "approved"), actions)

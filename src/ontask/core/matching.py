@@ -214,6 +214,10 @@ def rule_actions(target: FocusTarget, approved, disapproved) -> list[RuleAction]
     ]
     if decided.rule is not None:
         actions.append(RuleAction(REMOVE, decided.rule.raw, LIST_NAMES[decided.status]))
+    if target.host and decided.status == APPROVED and decided.rule and decided.rule.kind == "app":
+        # The whole browser is approved. Disapproving or removing all of it
+        # from one tab is rarely meant, so that is left to Settings.
+        actions = [a for a in actions if a.rule != decided.rule.raw]
     return actions
 
 
@@ -226,15 +230,25 @@ def _flipping_rules(target, approved, disapproved, wanted, decider) -> list[str]
     google.com. With github.com/trending disapproved and github.com approved,
     adding github.com would change nothing, so only the move is offered.
     """
-    candidates = [suggest_rule(target)]
-    if decider is not None and decider.raw not in candidates:
-        candidates.append(decider.raw)
+    suggested = suggest_rule(target)
+    if decider is None:
+        candidates = [suggested]
+    elif _same_rule(decider, Rule.parse(suggested)):
+        # "google.com" or "site:https://google.com" is the suggested rule written
+        # another way: one option, moving the rule as it is written.
+        candidates = [decider.raw]
+    else:
+        candidates = [suggested, decider.raw]
     flipping = []
     for rule in candidates:
         moved = moved_rule(approved, disapproved, rule, LIST_NAMES[wanted])
         if classify(target, *moved).status == wanted:
             flipping.append(rule)
     return flipping
+
+
+def _same_rule(a: Rule | None, b: Rule | None) -> bool:
+    return a is not None and b is not None and (a.kind, a.pattern) == (b.kind, b.pattern)
 
 
 def moved_rule(approved, disapproved, rule: str, listname: str) -> tuple[list, list]:

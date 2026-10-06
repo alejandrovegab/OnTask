@@ -84,7 +84,9 @@ specific rule decided, say `github.com/trending` is disapproved while
 offers that rule instead and moves it to the other list. On a site inside a
 broader rule (`docs.google.com` with `google.com` disapproved), you get both:
 **Approve docs.google.com** adds just that site as an exception, and
-**Approve google.com** moves the whole site to the approved list. When OnTask can't tell what is in front, a
+**Approve google.com** moves the whole site to the approved list. On a website
+in a browser you approved as a whole (`app:Safari`), the menu offers only to
+disapprove the site; changing the browser's own rule is left to Settings. When OnTask can't tell what is in front, a
 greyed-out "Nothing to approve or disapprove" takes the items' place.
 
 ### Hotkeys
