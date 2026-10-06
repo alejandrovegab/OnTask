@@ -193,8 +193,9 @@ class RuleAction:
 def rule_actions(target: FocusTarget, approved, disapproved) -> list[RuleAction]:
     """Only the list changes that would change `target`'s status.
 
-    Not listed: approve or disapprove it. Listed: put it on the other list, or
-    remove the rule that decided it. Nothing at all when nothing was detected.
+    Not listed: approve or disapprove it. Listed: put it on the other list
+    (just this site, or the broader rule that decided, whichever would work),
+    or remove the rule that decided it. Nothing when nothing was detected.
     """
     if target.is_unknown:
         return []
@@ -206,30 +207,34 @@ def rule_actions(target: FocusTarget, approved, disapproved) -> list[RuleAction]
             RuleAction(DISAPPROVE, rule, LIST_NAMES[DISAPPROVED]),
         ]
     other = DISAPPROVED if decided.status == APPROVED else APPROVED
-    actions = []
-    flip = _flipping_rule(target, approved, disapproved, other, decided.rule)
-    if flip is not None:
-        actions.append(RuleAction(APPROVE if other == APPROVED else DISAPPROVE, flip, other))
+    verb = APPROVE if other == APPROVED else DISAPPROVE
+    actions = [
+        RuleAction(verb, rule, LIST_NAMES[other])
+        for rule in _flipping_rules(target, approved, disapproved, other, decided.rule)
+    ]
     if decided.rule is not None:
         actions.append(RuleAction(REMOVE, decided.rule.raw, LIST_NAMES[decided.status]))
     return actions
 
 
-def _flipping_rule(target, approved, disapproved, wanted, decider) -> str | None:
-    """The rule to add to `wanted` so the target ends up there, if any does.
+def _flipping_rules(target, approved, disapproved, wanted, decider) -> list[str]:
+    """Each rule that, added to `wanted`, would put the target there.
 
-    The suggested rule (the site or app) comes first. A more specific rule on
-    the other list can outrank it, e.g. github.com/trending disapproved with
-    github.com approved; then the rule that decided is moved across instead.
+    Two candidates, in this order: the suggested rule (the site or app), then
+    the rule that decided, moved across. On docs.google.com with google.com
+    disapproved both work: an exception for docs.google.com, or all of
+    google.com. With github.com/trending disapproved and github.com approved,
+    adding github.com would change nothing, so only the move is offered.
     """
     candidates = [suggest_rule(target)]
     if decider is not None and decider.raw not in candidates:
         candidates.append(decider.raw)
+    flipping = []
     for rule in candidates:
         moved = moved_rule(approved, disapproved, rule, LIST_NAMES[wanted])
         if classify(target, *moved).status == wanted:
-            return rule
-    return None
+            flipping.append(rule)
+    return flipping
 
 
 def moved_rule(approved, disapproved, rule: str, listname: str) -> tuple[list, list]:

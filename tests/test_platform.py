@@ -471,7 +471,8 @@ class MenuBarIdleTest(unittest.TestCase):
         self.focus.current.assert_called_once()
         self.assertEqual(self.app.status_items["focus"].title, "Focus: Messages - not listed")
         titles = [item.title for item in self.app.rule_items]
-        self.assertEqual(titles, ["Approve Messages", "Disapprove Messages"])
+        self.assertEqual(titles, ["Approve Messages", "Disapprove Messages", ""])
+        self.assertTrue(self.app.rule_items[2]._menuitem.isHidden())
 
     def test_a_poll_in_session_leaves_the_clock_to_its_own_timer(self):
         self.app.controller.start_session()
@@ -540,18 +541,35 @@ class MenuBarIdleTest(unittest.TestCase):
 
         self.focus.current.return_value = FocusTarget()
         self.app._menu_will_open()
-        first, second = self.app.rule_items
+        first, *rest = self.app.rule_items
         self.assertEqual(first.title, NOTHING_TO_LIST)
         self.assertIsNone(first._menuitem.action(), "greyed out")
         self.assertFalse(first._menuitem.isHidden())
-        self.assertTrue(second._menuitem.isHidden())
+        self.assertTrue(all(item._menuitem.isHidden() for item in rest))
 
     def test_a_listed_app_offers_the_other_list_and_remove(self):
         self.app.controller.config.profile().approved.append("app:Messages")
         self.app._menu_will_open()
-        titles = [item.title for item in self.app.rule_items]
+        shown = [item for item in self.app.rule_items if not item._menuitem.isHidden()]
+        titles = [item.title for item in shown]
         self.assertEqual(titles, ["Disapprove Messages", "Remove Messages from Approved"])
-        self.assertTrue(all(item._menuitem.action() for item in self.app.rule_items))
+        self.assertTrue(all(item._menuitem.action() for item in shown))
+
+    def test_a_site_inside_a_broader_rule_offers_three_items(self):
+        self.app.controller.config.profile().disapproved.append("site:google.com")
+        self.focus.current.return_value = FocusTarget(
+            app_name="Safari", bundle_id="com.apple.Safari", url="https://docs.google.com/d/1"
+        )
+        self.app._menu_will_open()
+        titles = [item.title for item in self.app.rule_items]
+        self.assertEqual(
+            titles,
+            [
+                "Approve docs.google.com",
+                "Approve google.com",
+                "Remove google.com from Disapproved",
+            ],
+        )
 
     def test_clicking_an_item_runs_its_action(self):
         self.app._menu_will_open()

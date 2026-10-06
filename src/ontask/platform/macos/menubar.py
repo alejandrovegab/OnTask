@@ -23,9 +23,10 @@ from .prompt import PromptWindow
 
 STATUS_SLOTS = ("session", "profile", "interval", "next", "focus")
 
-# The most list actions the menu offers at once: two for a target on neither
-# list (approve, disapprove), two for a listed one (the other list, remove).
-RULE_SLOTS = 2
+# The most list actions the menu offers at once: for a listed target, the
+# other list for just this site, the other list for the broader rule that
+# decided, and removing that rule.
+RULE_SLOTS = 3
 
 # Shown, greyed out, when nothing in front could be detected.
 NOTHING_TO_LIST = "Nothing to approve or disapprove"

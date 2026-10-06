@@ -82,8 +82,9 @@ status. Usually Approve or Disapprove adds the site or app itself. If a more
 specific rule decided, say `github.com/trending` is disapproved while
 `github.com` is approved, adding the site would change nothing, so the item
 offers that rule instead and moves it to the other list. On a site inside a
-broader rule (`docs.google.com` with `google.com` disapproved), Approve adds
-just that site as an exception. When OnTask can't tell what is in front, a
+broader rule (`docs.google.com` with `google.com` disapproved), you get both:
+**Approve docs.google.com** adds just that site as an exception, and
+**Approve google.com** moves the whole site to the approved list. When OnTask can't tell what is in front, a
 greyed-out "Nothing to approve or disapprove" takes the items' place.
 
 ### Hotkeys

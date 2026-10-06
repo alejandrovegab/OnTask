@@ -644,14 +644,33 @@ class RuleActionsTest(unittest.TestCase):
             ],
         )
 
-    def test_a_broader_rule_gets_an_exception_for_the_site(self):
+    def test_a_broader_rule_offers_an_exception_or_the_whole_site(self):
         actions = _actions(self.DOCS, [], ["site:google.com"])
         self.assertEqual(
             actions,
             [
                 ("approve", "site:docs.google.com", "approved"),
+                ("approve", "site:google.com", "approved"),
                 ("remove", "site:google.com", "disapproved"),
             ],
+        )
+
+    def test_it_works_the_same_from_the_approved_side(self):
+        actions = _actions(self.DOCS, ["site:google.com"], [])
+        self.assertEqual(
+            [(verb, rule) for verb, rule, _ in actions],
+            [
+                ("disapprove", "site:docs.google.com"),
+                ("disapprove", "site:google.com"),
+                ("remove", "site:google.com"),
+            ],
+        )
+
+    def test_an_app_rule_deciding_a_site_offers_the_site_or_the_app(self):
+        actions = _actions(BLOCKED_SITE, [], ["app:Safari"])
+        self.assertEqual(
+            [(verb, rule) for verb, rule, _ in actions],
+            [("approve", "site:youtube.com"), ("approve", "app:Safari"), ("remove", "app:Safari")],
         )
 
     def test_remove_names_the_rule_that_decided(self):
