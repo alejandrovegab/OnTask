@@ -19,6 +19,37 @@ from pathlib import Path
 
 RAISE_POLL_MS = 400
 
+# Room left for the menu bar, the title bar and the Dock when sizing a window
+# to the screen, where the system cannot be asked for its usable area.
+SCREEN_MARGIN = 120
+
+# A window's title bar, which sits outside the height Tk is given.
+TITLE_BAR = 32
+
+
+def fit_to_screen(root: tk.Tk, margin: int = SCREEN_MARGIN) -> None:
+    """Open no taller than the screen, so the bottom of the window stays on it.
+
+    A window asks for the height its contents want. Settings' General tab made
+    that 948 px on a 982 px laptop screen, which pushed the Save button off the
+    bottom edge.
+    """
+    root.update_idletasks()
+    usable = _usable_height()
+    room = usable - TITLE_BAR if usable else root.winfo_screenheight() - margin
+    height = min(root.winfo_reqheight(), room)
+    root.geometry(f"{root.winfo_reqwidth()}x{max(height, 1)}")
+
+
+def _usable_height() -> int:
+    """The screen's height minus the menu bar and Dock, where macOS says so."""
+    try:
+        from AppKit import NSScreen
+
+        return int(NSScreen.mainScreen().visibleFrame().size.height)
+    except Exception:
+        return 0
+
 
 def bring_to_front(root: tk.Tk) -> None:
     """Put a Tk window in front of whatever the user was doing."""

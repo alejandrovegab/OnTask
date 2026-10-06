@@ -50,6 +50,42 @@ class SettingsWindowTest(unittest.TestCase):
         self.root.destroy()
         self.tmp.cleanup()
 
+    def _save_button(self):
+        footer = self.window.status.master
+        return next(b for b in footer.winfo_children() if b.cget("text") == "Save")
+
+    def test_the_buttons_keep_their_place_when_the_window_is_short(self):
+        # A 982 px laptop screen pushed Save off the bottom edge. Tk takes the
+        # missing space from whatever was packed last, so the button row must
+        # be packed, at the bottom, before the tabs.
+        footer = self._save_button().master
+        packed = footer.master.pack_slaves()
+        self.assertIs(packed[0], footer)
+        self.assertEqual(footer.pack_info()["side"], "bottom")
+
+    def test_the_window_opens_no_taller_than_the_screen(self):
+        from unittest import mock
+
+        from ontask.ui.tk import window
+
+        with mock.patch.object(window, "_usable_height", return_value=800):
+            window.fit_to_screen(self.root)
+        self.root.update_idletasks()
+        self.assertLessEqual(self.root.winfo_height(), max(800 - window.TITLE_BAR, 660))
+
+    def test_without_the_usable_height_a_margin_is_left(self):
+        from unittest import mock
+
+        from ontask.ui.tk import window
+
+        with (
+            mock.patch.object(window, "_usable_height", return_value=0),
+            mock.patch.object(self.root, "winfo_screenheight", return_value=800),
+        ):
+            window.fit_to_screen(self.root)
+        self.root.update_idletasks()
+        self.assertLessEqual(self.root.winfo_height(), max(800 - window.SCREEN_MARGIN, 660))
+
     def test_defaults_are_shown(self):
         self.assertEqual(self.window.intervals_var.get(), "3, 5, 7, 10, 14, 20")
         self.assertEqual(self.window.advance_var.get(), "1, 2, 2, 3, 3")
