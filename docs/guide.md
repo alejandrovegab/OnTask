@@ -63,8 +63,9 @@ Everything hangs off the menu bar icon:
 | Start / End Session | Begins or ends timing. Ending resets the ladder. |
 | Pause / Resume | Stops the clock and the reminders without losing elapsed time. |
 | Profile | Switch work mode; each has its own lists. |
-| Approve *thing* | Adds whatever you are looking at to the approved list. |
-| Disapprove *thing* | Adds it to the disapproved list instead. |
+| Approve *thing* | Adds whatever you are looking at to the approved list. Shown when it isn't approved. |
+| Disapprove *thing* | Adds it to the disapproved list. Shown when it isn't disapproved. |
+| Remove *rule* from Approved / Disapproved | Deletes the rule that decided its status, so it is no longer listed by that rule. Shown when it is on a list. |
 | Settings... | Opens the settings window. |
 | Permissions... | Shows which grants are active and how to fix the missing ones. |
 
@@ -75,6 +76,15 @@ That last line works with no session running too: OnTask reads the window you
 were in at the moment you open the menu. To check a rule, switch to the app or
 site and click the menu bar icon. Between sessions, and while paused, that is
 the only time OnTask looks at your windows.
+
+The list items below it only ever offer a change that would change that
+status. Usually Approve or Disapprove adds the site or app itself. If a more
+specific rule decided, say `github.com/trending` is disapproved while
+`github.com` is approved, adding the site would change nothing, so the item
+offers that rule instead and moves it to the other list. On a site inside a
+broader rule (`docs.google.com` with `google.com` disapproved), Approve adds
+just that site as an exception. When OnTask can't tell what is in front, a
+greyed-out "Nothing to approve or disapprove" takes the items' place.
 
 ### Hotkeys
 

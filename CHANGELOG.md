@@ -33,6 +33,10 @@ first release will be 0.1.0.
   site and open the menu to see how your rules classify it.
 - No window reading between sessions or while paused, and no once-a-second
   redraw; OnTask looks at the front window only when you open its menu.
+- Approving, disapproving and removing the current app or site from the menu.
+  The menu offers only changes that would change its status, names the rule it
+  would remove, and confirms with plain names ("Added Messages to the
+  disapproved list for Deep Work.").
 - **Permissions...** in the menu, showing each grant and how to fix a missing
   one.
 - A signed, double-clickable `OnTask.app` built by `scripts/build-mac-app.sh`.

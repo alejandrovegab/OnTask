@@ -32,7 +32,10 @@ wander somewhere off-limits and it notices within seconds.
   offers to approve it.
 - **See what it sees.** Click the menu bar icon and it names the app or site
   you're on and how your rules treat it: approved, disapproved or not listed.
-  Approve or disapprove it right there, with or without a session running.
+  Change that right there, with or without a session running: the menu offers
+  only what would change it (approve, disapprove, or remove the rule that
+  decided), and confirms in plain words ("Added Messages to the disapproved
+  list").
 - **Your choice of prompt.** A floating window, a notification banner with
   Yes/No buttons, or a banner that escalates to the window if ignored.
 - **Statistics.** Session time, time lost to distractions and where it went,
@@ -105,7 +108,7 @@ breaking or asking again.
 ## Under the hood
 
 - **A testable core.** The reminder logic is a state machine with no UI or OS
-  calls, driven by a clock that tests replace, so 225 tests covering timing,
+  calls, driven by a clock that tests replace, so 242 tests covering timing,
   rules and platform behavior run in about a second.
 - **Browser tab detection.** AppleScript for Safari and Chromium browsers,
   addressed by bundle ID, with the right dialect detected per browser, and a
@@ -135,9 +138,6 @@ Planned work, roughly in order. Each item lands as its own reviewed pull request
 - **Performance.** Event-driven focus detection, in-process AppleScript and
   cached rules, aiming for under 0.5% CPU during a session even on an old
   machine.
-- **A smarter menu.** Only the actions that change something, including
-  removing the current app or site from a list, and confirmations that name
-  things plainly ("Messages", not "app:Messages").
 - **Native macOS interface.** Settings and Statistics rebuilt in AppKit, with
   the Liquid Glass look on macOS 26 and smooth native scrolling. Settings gains
   search, per-setting reset, and undo for any change.
