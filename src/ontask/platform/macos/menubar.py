@@ -12,7 +12,8 @@ from pathlib import Path
 
 import objc
 import rumps
-from Foundation import NSDate, NSObject
+from AppKit import NSAttributedString, NSFont, NSFontAttributeName, NSFontWeightRegular
+from Foundation import NSDate, NSObject, NSRunLoop, NSRunLoopCommonModes
 
 from ...app import Controller
 from ...core.engine import IDLE, PAUSED, RUNNING, ActivePrompt, format_duration
@@ -87,6 +88,7 @@ class OnTaskApp(rumps.App):
         self._pending: ActivePrompt | None = None
         self._profile_items: dict[str, rumps.MenuItem] = {}
         self._warned_notifications = False
+        self._shown_title: str | None = None
         self._waker = _Waker.alloc().initWithCallback_(self._wake)
         self.controller.set_wake_hook(self._waker.wake)
         self._build_menu()
@@ -212,9 +214,11 @@ class OnTaskApp(rumps.App):
             self.timer.stop()
             self.timer.interval = interval
             self.timer.start()
+            keep_running_in_menus(self.timer)
         # Idle or paused, the menu bar title does not change from second to second.
         if running and not self.clock_timer.is_alive():
             self.clock_timer.start()
+            keep_running_in_menus(self.clock_timer)
         elif not running and self.clock_timer.is_alive():
             self.clock_timer.stop()
 
@@ -332,11 +336,11 @@ class OnTaskApp(rumps.App):
         snap = self.controller.snapshot()
         general = self.controller.config.general
         if general.show_elapsed_in_menu_bar and snap.phase != IDLE:
-            self.title = (
+            self._show_title(
                 f"{'*' if snap.phase == RUNNING else '||'} {format_duration(snap.elapsed_seconds)}"
             )
         else:
-            self.title = "OnTask"
+            self._show_title("OnTask")
 
         lines = {
             "session": (
@@ -372,6 +376,22 @@ class OnTaskApp(rumps.App):
         self._pace_timers(snap.phase)
         if snap.phase == RUNNING:
             self._align_clock(snap.elapsed_seconds)
+
+    def _show_title(self, text: str) -> None:
+        """Set the menu bar text, with digits that all take the same width.
+
+        In the normal font a "1" is narrower than an "8", so the ticking clock
+        nudged everything beside it sideways. Before the run loop starts there
+        is no status item yet; rumps draws the plain title at launch and the
+        next change replaces it.
+        """
+        if text == self._shown_title:
+            return
+        self._shown_title = text
+        self.title = text
+        item = getattr(getattr(self, "_nsapp", None), "nsstatusitem", None)
+        if item is not None:
+            item.button().setAttributedTitle_(clock_title(text))
 
     # -- diagnostics ------------------------------------------------------
 
@@ -477,3 +497,29 @@ def seconds_to_mid_second(elapsed: float) -> float:
 def phase_gap(a: float, b: float) -> float:
     """How far apart two once-a-second schedules are, from 0 to 0.5 s."""
     return abs((a - b + 0.5) % 1.0 - 0.5)
+
+
+def keep_running_in_menus(timer) -> None:
+    """Let a started rumps timer fire while a menu is open.
+
+    rumps schedules timers for the run loop's default mode only, and macOS
+    switches to another mode while it tracks an open menu, so the clock froze
+    until the menu closed. The common modes include both.
+    """
+    nstimer = getattr(timer, "_nstimer", None)
+    if nstimer is not None:
+        NSRunLoop.currentRunLoop().addTimer_forMode_(nstimer, NSRunLoopCommonModes)
+
+
+_clock_font = None
+
+
+def clock_title(text: str):
+    """`text` in the menu bar's font, with fixed-width digits like Apple's clock."""
+    global _clock_font
+    if _clock_font is None:
+        size = NSFont.menuBarFontOfSize_(0).pointSize()
+        _clock_font = NSFont.monospacedDigitSystemFontOfSize_weight_(size, NSFontWeightRegular)
+    return NSAttributedString.alloc().initWithString_attributes_(
+        text, {NSFontAttributeName: _clock_font}
+    )

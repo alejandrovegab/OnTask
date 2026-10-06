@@ -509,8 +509,62 @@ class MenuBarIdleTest(unittest.TestCase):
         self.assertAlmostEqual(phase_gap(-0.05, 0.95), 0.0)
         self.assertAlmostEqual(phase_gap(0.0, 0.5), 0.5)
 
+    def test_the_clock_text_keeps_its_width_as_it_ticks(self):
+        from ontask.platform.macos.menubar import clock_title
+
+        for same_length in (("* 1:11", "* 8:88", "* 4:07"), ("|| 10:00", "|| 47:59")):
+            widths = {clock_title(t).size().width for t in same_length}
+            self.assertEqual(len(widths), 1, same_length)
+
+    def test_the_title_reaches_the_menu_bar_in_the_clock_font(self):
+        status_item = mock.Mock()
+        self.app._nsapp = mock.Mock(nsstatusitem=status_item)
+        self.app.controller.start_session()
+        button = status_item.button.return_value
+        button.setAttributedTitle_.assert_called()
+        shown = button.setAttributedTitle_.call_args[0][0]
+        self.assertEqual(str(shown.string()), "* 0:00")
+        font = shown.attribute_atIndex_effectiveRange_("NSFont", 0, None)[0]
+        self.assertTrue(font.fontDescriptor().objectForKey_("NSCTFontFeatureSettingsAttribute"))
+
+    def test_an_unchanged_title_is_not_redrawn(self):
+        status_item = mock.Mock()
+        self.app._nsapp = mock.Mock(nsstatusitem=status_item)
+        self.app.refresh()
+        self.app.refresh()
+        status_item.button.return_value.setAttributedTitle_.assert_not_called()
+
     def test_the_menu_has_the_opening_delegate(self):
         self.assertIs(self.app._menu._menu.delegate(), self.app._menu_opening)
+
+
+@unittest.skipUnless(HAVE_RUMPS and HAVE_PYOBJC, "rumps/PyObjC not installed")
+class TimerInOpenMenuTest(unittest.TestCase):
+    """macOS runs a separate mode while a menu is open; the clock must tick in it."""
+
+    def _fires_while_a_menu_is_open(self, keep_running: bool) -> int:
+        import rumps
+        from Foundation import NSDate, NSRunLoop
+
+        from ontask.platform.macos.menubar import keep_running_in_menus
+
+        fires = []
+        timer = rumps.Timer(lambda _t: fires.append(1), 0.05)
+        timer.start()
+        self.addCleanup(timer.stop)
+        if keep_running:
+            keep_running_in_menus(timer)
+        loop = NSRunLoop.currentRunLoop()
+        deadline = NSDate.dateWithTimeIntervalSinceNow_(0.3)
+        while deadline.timeIntervalSinceNow() > 0:
+            loop.runMode_beforeDate_("NSEventTrackingRunLoopMode", deadline)
+        return len(fires)
+
+    def test_a_plain_rumps_timer_waits_for_the_menu_to_close(self):
+        self.assertEqual(self._fires_while_a_menu_is_open(keep_running=False), 0)
+
+    def test_the_clock_keeps_ticking_with_the_menu_open(self):
+        self.assertGreater(self._fires_while_a_menu_is_open(keep_running=True), 2)
 
 
 @unittest.skipUnless(sys.platform == "darwin", "macOS accessibility API")
