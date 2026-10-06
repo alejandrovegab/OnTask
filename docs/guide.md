@@ -214,8 +214,9 @@ the running session. Add, duplicate, rename, and delete them in Settings.
 
 ## Settings reference
 
-In the Settings window, changes take effect when you click **Save**. **Close**
-throws away anything unsaved, and so does closing the window.
+The Settings window never saves on its own: click **Save** to keep your
+changes. If you close it without saving, whether with **Close** or the window's
+close button, your changes are lost.
 
 Settings live in a JSON file you can also edit by hand; the running app picks up
 changes within one poll, no restart needed.
