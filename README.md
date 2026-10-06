@@ -7,7 +7,7 @@
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
 
 > **Heads up: OnTask is heavily vibe-coded.** Most of the code was written by
-> Claude, Anthropic's AI, with me directing it, making the decisions and testing
+> Claude, with me directing it, making the decisions and testing
 > each change by hand. [More on how it's built.](#how-its-built)
 
 OnTask is a macOS menu bar app that watches what you actually have in front of
