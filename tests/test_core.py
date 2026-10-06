@@ -13,6 +13,7 @@ from ontask.core.engine import (
     Answered,
     Engine,
     RealertPrompt,
+    SessionChanged,
     ShowPrompt,
     SuggestApprove,
     format_duration,
@@ -331,6 +332,44 @@ class SessionTest(unittest.TestCase):
         # cadence and never treated as a distraction.
         self.assertNotIn(DISTRACTION, kinds)
         self.assertIn(CADENCE, kinds)
+
+    def test_pausing_keeps_the_time_the_clock_already_showed(self):
+        # Polls at 0 and 2 s; the menu bar reads 3.5 s just before the pause.
+        engine = Engine(make_config(), now=0.0)
+        engine.start(0.0)
+        engine.tick(2.0, APPROVED_APP)
+        shown = engine.snapshot(3.5).elapsed_seconds
+        engine.pause(3.5)
+        self.assertEqual(engine.snapshot(3.5).elapsed_seconds, shown)
+        self.assertEqual(engine.snapshot(9.0).elapsed_seconds, 3.5)
+
+    def test_ending_a_session_banks_the_time_since_the_last_poll(self):
+        engine = Engine(make_config(), now=0.0)
+        engine.start(0.0)
+        engine.tick(2.0, APPROVED_APP)
+        events = engine.stop(3.5)
+        ended = [e for e in events if isinstance(e, SessionChanged)]
+        self.assertEqual(ended[-1].elapsed_seconds, 3.5)
+
+    def test_the_countdown_shown_off_task_does_not_run_ahead(self):
+        # Off approved work the next check-in is on hold, so the display must
+        # not count it down only for the next poll to put it back.
+        engine = Engine(make_config(), now=0.0)
+        engine.start(0.0)
+        engine.tick(2.0, UNLISTED_APP)
+        held = engine.snapshot(2.0).next_prompt_seconds
+        self.assertEqual(engine.snapshot(3.5).next_prompt_seconds, held)
+        engine.tick(4.0, APPROVED_APP)
+        self.assertEqual(engine.snapshot(5.0).next_prompt_seconds, held - 3.0)
+
+    def test_pausing_on_work_keeps_the_countdown_shown(self):
+        engine = Engine(make_config(), now=0.0)
+        engine.start(0.0)
+        engine.tick(2.0, APPROVED_APP)
+        shown = engine.snapshot(3.5).next_prompt_seconds
+        engine.pause(3.5)
+        engine.resume(10.0)
+        self.assertEqual(engine.snapshot(10.0).next_prompt_seconds, shown)
 
     def test_format_duration(self):
         self.assertEqual(format_duration(59), "0:59")

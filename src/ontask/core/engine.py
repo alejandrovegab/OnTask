@@ -154,6 +154,9 @@ class Engine:
         # Set when an off-task check-in is answered; a return to approved work
         # before the deadline is what "the check-in worked" means.
         self._recovery_deadline = 0.0
+        # Whether the last tick counted the cadence down, i.e. the user was on
+        # approved work. Only then may the display run the countdown ahead.
+        self._cadence_counting = False
 
     # -- configuration ----------------------------------------------------
 
@@ -224,13 +227,17 @@ class Engine:
         self.ladder.reset()
         self.cadence_remaining = self.ladder.interval_seconds
         self.last_tick = now
+        # Until the first poll says otherwise, as sessions usually start on work.
+        self._cadence_counting = True
         self._reset_off_task()
         return [SessionChanged(self.phase, 0.0, self.config.active_profile)]
 
     def stop(self, now: float | None = None) -> list[Event]:
+        now = self._now(now)
+        self._catch_up(now)
         elapsed = self.elapsed_seconds
         self.phase = IDLE
-        self.last_tick = self._now(now)
+        self.last_tick = now
         events: list[Event] = self._flush_off_task()
         if self.active_prompt is not None:
             self.active_prompt = None
@@ -241,8 +248,10 @@ class Engine:
     def pause(self, now: float | None = None) -> list[Event]:
         if self.phase != RUNNING:
             return []
+        now = self._now(now)
+        self._catch_up(now)
         self.phase = PAUSED
-        self.last_tick = self._now(now)
+        self.last_tick = now
         events: list[Event] = self._flush_off_task()
         if self.active_prompt is not None:
             self.active_prompt = None
@@ -256,6 +265,21 @@ class Engine:
         self.phase = RUNNING
         self.last_tick = self._now(now)
         return [SessionChanged(self.phase, self.elapsed_seconds, self.config.active_profile)]
+
+    def _catch_up(self, now: float) -> None:
+        """Credit the time since the last tick before the clock stops.
+
+        The menu bar already shows that time (see `snapshot`), so dropping it
+        made the clock step back a second or two on pause, and ending a session
+        lost it from the statistics.
+        """
+        if self.phase != RUNNING:
+            return
+        drift = min(max(0.0, now - self.last_tick), self._max_step())
+        self.elapsed_seconds += drift
+        if self._cadence_counting and self.active_prompt is None:
+            self.cadence_remaining -= drift
+        self.last_tick = now
 
     def toggle(self, now: float | None = None) -> list[Event]:
         return self.stop(now) if self.phase != IDLE else self.start(now)
@@ -274,6 +298,7 @@ class Engine:
         if self.phase != RUNNING:
             return []
         self.elapsed_seconds += dt
+        self._cadence_counting = False
 
         if self.active_prompt is not None:
             return self._tick_open_prompt(now)
@@ -291,6 +316,7 @@ class Engine:
                 self._reset_off_task()
             events.extend(self._check_recovery(target, now))
             self.cadence_remaining -= dt
+            self._cadence_counting = True
             if self.cadence_remaining <= 0:
                 events.extend(self._open(CADENCE, target, now))
             return events
@@ -446,7 +472,9 @@ class Engine:
         if now is not None and self.phase == RUNNING:
             drift = min(max(0.0, now - self.last_tick), self._max_step())
             elapsed += drift
-            if self.active_prompt is None:
+            if self._cadence_counting and self.active_prompt is None:
+                # Off approved work the cadence is on hold, so counting it down
+                # here would make the next poll jump it back up.
                 remaining = max(0.0, remaining - drift)
         return Snapshot(
             phase=self.phase,
