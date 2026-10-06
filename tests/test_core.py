@@ -547,26 +547,213 @@ class WordingTest(unittest.TestCase):
         self.assertIn("is on your disapproved list", question)
         self.assertNotIn("blocked", question.lower())
 
+    def _run(self, verb):
+        action = next(a for a in self.controller.rule_actions() if a.verb == verb)
+        self.controller.run_rule_action(action)
+
     def test_disapproving_adds_the_rule_and_says_which_list(self):
         self._status_of(UNLISTED_APP)
-        self.controller.disapprove_current()
+        self._run("disapprove")
         self.assertIn("app:Messages", Config.load(self.path).profile("Test").disapproved)
         self.controller.shell.notify.assert_called_with(
-            "OnTask", "Added app:Messages to the disapproved list for Test."
+            "OnTask", "Added Messages to the disapproved list for Test."
         )
 
     def test_approving_says_which_list(self):
         self._status_of(UNLISTED_APP)
-        self.controller.approve_current()
+        self._run("approve")
         self.controller.shell.notify.assert_called_with(
-            "OnTask", "Added app:Messages to the approved list for Test."
+            "OnTask", "Added Messages to the approved list for Test."
         )
+
+    def test_removing_takes_the_rule_off_and_says_which_list(self):
+        self._status_of(BLOCKED_SITE)
+        self._run("remove")
+        self.assertNotIn("site:youtube.com", Config.load(self.path).profile("Test").disapproved)
+        self.controller.shell.notify.assert_called_with(
+            "OnTask", "Removed youtube.com from the disapproved list for Test."
+        )
+        self.assertTrue(self.controller.current_status_text().endswith(" - not listed"))
+
+    def test_menu_titles_name_the_thing_and_the_list(self):
+        self._status_of(APPROVED_APP)
+        titles = [self.controller.rule_action_title(a) for a in self.controller.rule_actions()]
+        self.assertEqual(titles, ["Disapprove Code", "Remove Code from Approved"])
+
+    def test_the_actions_follow_a_list_change(self):
+        self._status_of(UNLISTED_APP)
+        self._run("approve")
+        verbs = [a.verb for a in self.controller.rule_actions()]
+        self.assertEqual(verbs, ["disapprove", "remove"])
 
     def test_the_settings_file_keeps_its_words(self):
         # Only the screen wording changed; existing config files must load as-is.
         saved = make_config().to_dict()
         self.assertIn("disapproved", saved["profiles"][0])
         self.assertIn("disapproved_grace_seconds", saved["reminder"])
+
+
+def _actions(target, approved, disapproved):
+    from ontask.core.matching import rule_actions
+
+    return [(a.verb, a.rule, a.listname) for a in rule_actions(target, approved, disapproved)]
+
+
+class RuleActionsTest(unittest.TestCase):
+    """The menu offers only list changes that change the status of what's in front."""
+
+    TRENDING = FocusTarget(
+        app_name="Safari", bundle_id="com.apple.Safari", url="https://github.com/trending"
+    )
+    DOCS = FocusTarget(
+        app_name="Safari", bundle_id="com.apple.Safari", url="https://docs.google.com/d/1"
+    )
+
+    def test_not_listed_offers_both_lists(self):
+        self.assertEqual(
+            _actions(UNLISTED_APP, [], []),
+            [
+                ("approve", "app:Messages", "approved"),
+                ("disapprove", "app:Messages", "disapproved"),
+            ],
+        )
+
+    def test_approved_offers_disapprove_and_remove(self):
+        self.assertEqual(
+            _actions(APPROVED_APP, ["app:Code"], []),
+            [("disapprove", "app:Code", "disapproved"), ("remove", "app:Code", "approved")],
+        )
+
+    def test_disapproved_offers_approve_and_remove(self):
+        self.assertEqual(
+            _actions(BLOCKED_SITE, [], ["site:youtube.com"]),
+            [
+                ("approve", "site:youtube.com", "approved"),
+                ("remove", "site:youtube.com", "disapproved"),
+            ],
+        )
+
+    def test_a_more_specific_rule_is_moved_rather_than_adding_the_site(self):
+        # Approving github.com would change nothing: the trending rule outranks it.
+        actions = _actions(self.TRENDING, ["site:github.com"], ["site:github.com/trending"])
+        self.assertEqual(
+            actions,
+            [
+                ("approve", "site:github.com/trending", "approved"),
+                ("remove", "site:github.com/trending", "disapproved"),
+            ],
+        )
+
+    def test_a_broader_rule_offers_an_exception_or_the_whole_site(self):
+        actions = _actions(self.DOCS, [], ["site:google.com"])
+        self.assertEqual(
+            actions,
+            [
+                ("approve", "site:docs.google.com", "approved"),
+                ("approve", "site:google.com", "approved"),
+                ("remove", "site:google.com", "disapproved"),
+            ],
+        )
+
+    def test_it_works_the_same_from_the_approved_side(self):
+        actions = _actions(self.DOCS, ["site:google.com"], [])
+        self.assertEqual(
+            [(verb, rule) for verb, rule, _ in actions],
+            [
+                ("disapprove", "site:docs.google.com"),
+                ("disapprove", "site:google.com"),
+                ("remove", "site:google.com"),
+            ],
+        )
+
+    def test_an_app_rule_deciding_a_site_offers_the_site_or_the_app(self):
+        actions = _actions(BLOCKED_SITE, [], ["app:Safari"])
+        self.assertEqual(
+            [(verb, rule) for verb, rule, _ in actions],
+            [("approve", "site:youtube.com"), ("approve", "app:Safari"), ("remove", "app:Safari")],
+        )
+
+    def test_an_approved_browser_offers_nothing_about_the_browser(self):
+        actions = _actions(BLOCKED_SITE, ["app:Safari"], [])
+        self.assertEqual(actions, [("disapprove", "site:youtube.com", "disapproved")])
+
+    def test_the_same_rule_written_differently_is_offered_once(self):
+        google = FocusTarget(app_name="Safari", url="https://www.google.com/search")
+        for written in ("google.com", "site:https://google.com", "site:google.com"):
+            with self.subTest(written=written):
+                self.assertEqual(
+                    _actions(google, [], [written]),
+                    [
+                        ("approve", written, "approved"),
+                        ("remove", written, "disapproved"),
+                    ],
+                )
+
+    def test_an_approved_rule_written_differently_is_offered_once(self):
+        # A tie goes to the disapproved list, so here both spellings would work.
+        # "app:code" is the suggested "app:Code" with different capitals.
+        self.assertEqual(
+            _actions(APPROVED_APP, ["app:code"], []),
+            [("disapprove", "app:code", "disapproved"), ("remove", "app:code", "approved")],
+        )
+
+    def test_pages_are_offered_only_when_a_page_rule_decided(self):
+        page = FocusTarget(app_name="Safari", url="https://reddit.com/r/python/comments/1")
+        rules = [rule for _, rule, _ in _actions(page, [], ["site:reddit.com"])]
+        self.assertEqual(rules, ["site:reddit.com", "site:reddit.com"])
+
+    def test_remove_names_the_rule_that_decided(self):
+        actions = _actions(self.TRENDING, ["site:github.com"], [])
+        self.assertIn(("remove", "site:github.com", "approved"), actions)
+
+    def test_every_offered_change_flips_the_status(self):
+        from ontask.core.matching import classify, moved_rule, rule_actions
+
+        cases = [
+            (self.TRENDING, ["site:github.com"], ["site:github.com/trending"]),
+            (self.DOCS, [], ["site:google.com"]),
+            (BLOCKED_SITE, ["app:Safari"], ["site:youtube.com"]),
+            (BLOCKED_SITE, ["site:youtube.com/watch"], []),
+            (APPROVED_APP, ["app:com.microsoft.VSCode"], []),
+        ]
+        for target, approved, disapproved in cases:
+            before = classify(target, approved, disapproved).status
+            for action in rule_actions(target, approved, disapproved):
+                if action.verb == "remove":
+                    continue
+                after = classify(
+                    target, *moved_rule(approved, disapproved, action.rule, action.listname)
+                )
+                self.assertNotEqual(after.status, before, (target, action))
+
+    def test_no_switch_is_offered_when_none_would_work(self):
+        # Two equally specific rules: moving either leaves a tie, and a tie
+        # goes to the disapproved list.
+        actions = _actions(APPROVED_APP, [], ["app:code", "app:Code"])
+        self.assertEqual([verb for verb, _, _ in actions], ["remove"])
+
+    def test_nothing_detected_offers_nothing(self):
+        self.assertEqual(_actions(FocusTarget(), ["app:Code"], []), [])
+
+
+class FriendlyNameTest(unittest.TestCase):
+    def _name(self, rule, target=None):
+        from ontask.core.matching import friendly_name
+
+        return friendly_name(rule, target)
+
+    def test_prefixes_and_schemes_are_dropped(self):
+        self.assertEqual(self._name("app:Messages"), "Messages")
+        self.assertEqual(self._name("site:youtube.com"), "youtube.com")
+        self.assertEqual(self._name("site:https://reddit.com/r/python"), "reddit.com/r/python")
+        self.assertEqual(self._name("Slack"), "Slack")
+
+    def test_a_bundle_id_rule_names_the_app_it_matched(self):
+        self.assertEqual(self._name("app:com.microsoft.VSCode", APPROVED_APP), "Code")
+        self.assertEqual(self._name("app:com.microsoft.VSCode"), "com.microsoft.VSCode")
+
+    def test_wildcards_stay_visible(self):
+        self.assertEqual(self._name("app:Cod*", APPROVED_APP), "Cod*")
 
 
 if __name__ == "__main__":

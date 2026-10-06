@@ -17,6 +17,15 @@ Setup, tests, tooling and code layout. Release and signing chores are in
 Tests never touch your real settings: `tests/conftest.py` points them at a
 throwaway config directory.
 
+Two traps when testing a Tk window that is never shown (`root.withdraw()`):
+
+- Don't call `root.update()`. With several Tk roots alive in one run it can
+  wait for events forever and hang the suite; `update_idletasks()` does the
+  layout, which is all a test needs.
+- Don't trust `winfo_height()`. An unshown window reports the size its
+  contents want on Windows but the size that was set on macOS. Check what the
+  code asked for instead (e.g. mock `root.geometry`).
+
 Dependencies are locked in `requirements.txt`: exact versions with file
 hashes, for every platform. Edit `pyproject.toml`, then run
 `./scripts/update-lock.sh`; CI checks that the two agree.
@@ -53,7 +62,8 @@ src/ontask/
   core/            platform-neutral: no UI, no OS calls, fake-clock testable
     engine.py      the reminder state machine
     ladder.py      the escalating interval
-    matching.py    rule syntax and app/site classification
+    matching.py    rule syntax, app/site classification, and which list
+                   changes the menu offers (rule_actions)
     config.py      settings model, defaults, migrations, atomic save
     browsers.py    browser identity: bundle inspection and URL-route detection
   focus/           FocusTarget and per-platform provider selection

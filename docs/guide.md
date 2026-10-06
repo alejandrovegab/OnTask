@@ -63,10 +63,13 @@ Everything hangs off the menu bar icon:
 | Start / End Session | Begins or ends timing. Ending resets the ladder. |
 | Pause / Resume | Stops the clock and the reminders without losing elapsed time. |
 | Profile | Switch work mode; each has its own lists. |
-| Approve *thing* | Adds whatever you are looking at to the approved list. |
-| Disapprove *thing* | Adds it to the disapproved list instead. |
+| Approve *thing* | Adds whatever you are looking at to the approved list. Shown when it isn't approved. |
+| Disapprove *thing* | Adds it to the disapproved list. Shown when it isn't disapproved. |
+| Remove *rule* from Approved / Disapproved | Deletes the rule that decided its status, so it is no longer listed by that rule. Shown when it is on a list. |
 | Settings... | Opens the settings window. |
+| Statistics... | Opens the statistics report (see [Statistics](#statistics)). |
 | Permissions... | Shows which grants are active and how to fix the missing ones. |
+| Quit OnTask | Ends a running session, saves it to your statistics, and quits. |
 
 The top of the menu always shows elapsed time, current profile, where you are on
 the ladder, time until the next check-in, and how the current window classifies.
@@ -75,6 +78,19 @@ That last line works with no session running too: OnTask reads the window you
 were in at the moment you open the menu. To check a rule, switch to the app or
 site and click the menu bar icon. Between sessions, and while paused, that is
 the only time OnTask looks at your windows.
+
+The list items below it only ever offer a change that would change that
+status. Usually Approve or Disapprove adds the site or app itself. If a more
+specific rule decided, say `github.com/trending` is disapproved while
+`github.com` is approved, adding the site would change nothing, so the item
+offers that rule instead and moves it to the other list. On a site inside a
+broader rule (`docs.google.com` with `google.com` disapproved), you get both:
+**Approve docs.google.com** adds just that site as an exception, and
+**Approve google.com** moves the whole site to the approved list. On a website
+in a browser you approved as a whole (`app:Safari`), the menu offers only to
+disapprove the site; changing the browser's own rule is left to Settings. When
+OnTask can't tell what is in front, a greyed-out "Nothing to approve or
+disapprove" takes the items' place.
 
 ### Hotkeys
 
@@ -178,7 +194,8 @@ One per line, in either list:
 The **most specific matching rule wins**, so approving `github.com` while
 disapproving `github.com/trending` does what you would expect. On a tie, the
 disapproved list wins. Approving a browser itself (`app:Safari`) approves every
-tab in it.
+tab in it that you haven't listed; a site you've disapproved still counts as
+disapproved.
 
 ### Answering No
 
@@ -196,6 +213,10 @@ need. Switching profiles applies the new lists immediately without disturbing
 the running session. Add, duplicate, rename, and delete them in Settings.
 
 ## Settings reference
+
+The Settings window never saves on its own: click **Save** to keep your
+changes. If you close it without saving, whether with **Close** or the window's
+close button, your changes are lost.
 
 Settings live in a JSON file you can also edit by hand; the running app picks up
 changes within one poll, no restart needed.

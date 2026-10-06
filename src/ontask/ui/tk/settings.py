@@ -17,7 +17,7 @@ from tkinter import messagebox, ttk
 from ontask import ipc
 from ontask.core.config import ClockPenalty, Config, NoResponse, Profile
 from ontask.ui.tk.browser_setup import BrowserList
-from ontask.ui.tk.window import bring_to_front, watch_raise
+from ontask.ui.tk.window import bring_to_front, fit_to_screen, watch_raise
 
 RULE_HELP = (
     "One rule per line.   app:Slack   site:github.com   site:*.google.com   "
@@ -36,20 +36,24 @@ class SettingsWindow:
         self.root.minsize(780, 660)
         self._build()
         self._load_into_widgets()
+        fit_to_screen(self.root)
 
     # -- construction -----------------------------------------------------
 
     def _build(self) -> None:
         outer = ttk.Frame(self.root, padding=12)
         outer.pack(fill="both", expand=True)
+        # Packed before the tabs: when the window is shorter than the tabs want,
+        # Tk takes the space from whatever was packed last, and the buttons must
+        # never be the part that disappears.
+        footer = ttk.Frame(outer)
+        footer.pack(side="bottom", fill="x", pady=(12, 0))
         notebook = ttk.Notebook(outer)
         notebook.pack(fill="both", expand=True)
         self._build_profiles_tab(notebook)
         self._build_reminders_tab(notebook)
         self._build_general_tab(notebook)
 
-        footer = ttk.Frame(outer)
-        footer.pack(fill="x", pady=(12, 0))
         self.status = ttk.Label(footer, text="")
         self.status.pack(side="left")
         ttk.Button(footer, text="Close", command=self.root.destroy).pack(side="right")

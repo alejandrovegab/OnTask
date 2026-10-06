@@ -17,7 +17,14 @@ from .__main__ import self_command
 from .core import engine as eng
 from .core.config import Config, Profile
 from .core.engine import Engine, format_duration
-from .core.matching import STATUS_LABELS, classify, suggest_rule
+from .core.matching import (
+    REMOVE,
+    STATUS_LABELS,
+    RuleAction,
+    classify,
+    friendly_name,
+    rule_actions,
+)
 from .focus import UNKNOWN, FocusTarget, get_provider
 from .stats import Stats, default_stats_path
 
@@ -64,6 +71,8 @@ class Controller:
         self._settings_proc = None
         self._stats_proc = None
         self._setup_proc = None
+        self._rule_actions_for: tuple | None = None
+        self._rule_actions: list[RuleAction] = []
         if self.config.general.start_session_on_launch:
             self.engine.start()
 
@@ -241,6 +250,15 @@ class Controller:
         opposite = getattr(target_profile, other)
         if rule in opposite:
             opposite.remove(rule)
+        self._lists_changed()
+
+    def remove_rule(self, rule: str, listname: str, profile: str | None = None) -> None:
+        entries = getattr(self.config.profile(profile), listname)
+        if rule in entries:
+            entries.remove(rule)
+        self._lists_changed()
+
+    def _lists_changed(self) -> None:
         self.config.save()
         self._config_mtime = self._mtime()
         self.engine.apply_config(self.config)
@@ -251,24 +269,39 @@ class Controller:
         count = self.config.reminder.suggest_approve_after_yes
         return (
             f"You've said you're on task in {target.describe()} {_times(count)}.\n\n"
-            f"Add {rule} to the approved list for {self.config.active_profile}?"
+            f"Add {friendly_name(rule, target)} to the approved list "
+            f"for {self.config.active_profile}?"
         )
 
-    def approve_current(self) -> None:
-        if not self.target.is_unknown:
-            rule = suggest_rule(self.target)
-            self.add_rule(rule, "approved")
-            self.shell.notify(
-                "OnTask", f"Added {rule} to the approved list for {self.config.active_profile}."
-            )
+    def rule_actions(self) -> list[RuleAction]:
+        """What the menu can do to the lists for the app or site in front.
 
-    def disapprove_current(self) -> None:
-        if not self.target.is_unknown:
-            rule = suggest_rule(self.target)
-            self.add_rule(rule, "disapproved")
-            self.shell.notify(
-                "OnTask", f"Added {rule} to the disapproved list for {self.config.active_profile}."
-            )
+        Worked out again only when the target or the lists change, since the
+        menu is redrawn every second during a session.
+        """
+        profile = self.config.profile()
+        key = (self.target, profile.name, tuple(profile.approved), tuple(profile.disapproved))
+        if key != self._rule_actions_for:
+            self._rule_actions_for = key
+            self._rule_actions = rule_actions(self.target, profile.approved, profile.disapproved)
+        return self._rule_actions
+
+    def rule_action_title(self, action: RuleAction) -> str:
+        name = friendly_name(action.rule, self.target)
+        if action.verb == REMOVE:
+            return f"Remove {name} from {action.listname.capitalize()}"
+        return f"{action.verb.capitalize()} {name}"
+
+    def run_rule_action(self, action: RuleAction) -> None:
+        name = friendly_name(action.rule, self.target)
+        profile = self.config.active_profile
+        if action.verb == REMOVE:
+            self.remove_rule(action.rule, action.listname)
+            message = f"Removed {name} from the {action.listname} list for {profile}."
+        else:
+            self.add_rule(action.rule, action.listname)
+            message = f"Added {name} to the {action.listname} list for {profile}."
+        self.shell.notify("OnTask", message)
 
     # -- settings ---------------------------------------------------------
 
