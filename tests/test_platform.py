@@ -379,7 +379,7 @@ class MenuBarTest(unittest.TestCase):
             cfg.save(path)
             with (
                 mock.patch("ontask.app.Config.load", return_value=Config.load(path)),
-                mock.patch("rumps.Timer"),
+                mock.patch("rumps.Timer", _FakeTimer),
             ):
                 app = OnTaskApp()
                 self.assertIsNone(app.controller._setup_proc, "no first-run window spawned")
@@ -471,6 +471,43 @@ class MenuBarIdleTest(unittest.TestCase):
         self.focus.current.assert_called_once()
         self.assertEqual(self.app.status_items["focus"].title, "Focus: Messages - unapproved")
         self.assertEqual(self.app.approve_item.title, "Approve Messages")
+
+    def test_a_poll_in_session_leaves_the_clock_to_its_own_timer(self):
+        self.app.controller.start_session()
+        with mock.patch.object(self.app, "refresh") as refresh:
+            self.app._tick(None)
+        refresh.assert_not_called()
+
+    def test_a_poll_with_no_session_still_redraws(self):
+        with mock.patch.object(self.app, "refresh") as refresh:
+            self.app._tick(None)
+        refresh.assert_called_once()
+
+    def test_the_clock_is_moved_to_mid_second(self):
+        self.app.controller.start_session()
+        nstimer = self.app.clock_timer._nstimer = mock.Mock()
+        # Due in 0.9 s, right as 8 s turns over; mid-second is 0.3 s away.
+        nstimer.fireDate.return_value.timeIntervalSinceNow.return_value = 0.9
+        self.app._align_clock(7.2)
+        nstimer.setFireDate_.assert_called_once()
+
+    def test_a_clock_already_near_mid_second_is_left_alone(self):
+        self.app.controller.start_session()
+        nstimer = self.app.clock_timer._nstimer = mock.Mock()
+        nstimer.fireDate.return_value.timeIntervalSinceNow.return_value = 0.25
+        self.app._align_clock(7.2)
+        nstimer.setFireDate_.assert_not_called()
+
+    def test_mid_second_arithmetic(self):
+        from ontask.platform.macos.menubar import phase_gap, seconds_to_mid_second
+
+        self.assertAlmostEqual(seconds_to_mid_second(7.2), 0.3)
+        self.assertAlmostEqual(seconds_to_mid_second(7.5), 0.0)
+        self.assertAlmostEqual(seconds_to_mid_second(7.9), 0.6)
+        # Schedules a whole second apart are the same schedule.
+        self.assertAlmostEqual(phase_gap(0.95, 0.05), 0.1)
+        self.assertAlmostEqual(phase_gap(-0.05, 0.95), 0.0)
+        self.assertAlmostEqual(phase_gap(0.0, 0.5), 0.5)
 
     def test_the_menu_has_the_opening_delegate(self):
         self.assertIs(self.app._menu._menu.delegate(), self.app._menu_opening)

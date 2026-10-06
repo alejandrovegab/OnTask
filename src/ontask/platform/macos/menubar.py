@@ -12,7 +12,7 @@ from pathlib import Path
 
 import objc
 import rumps
-from Foundation import NSObject
+from Foundation import NSDate, NSObject
 
 from ...app import Controller
 from ...core.engine import IDLE, PAUSED, RUNNING, ActivePrompt, format_duration
@@ -29,6 +29,9 @@ CLOCK_SECONDS = 1.0
 # With no session running (or paused), the poll only checks for a second launch
 # and for saved settings, so it keeps this pace whatever `poll_seconds` is.
 IDLE_POLL_SECONDS = 2.0
+
+# How far the clock's redraw may wander from mid-second before it is moved back.
+CLOCK_SLACK_SECONDS = 0.25
 
 
 class _Waker(NSObject):
@@ -171,7 +174,11 @@ class OnTaskApp(rumps.App):
 
     def _tick(self, _timer) -> None:
         self.controller.poll()
-        self.refresh()
+        # In a session the clock timer redraws within a second anyway. Redrawing
+        # here too, at whatever point in the second the poll lands, would turn
+        # the clock over early every couple of seconds.
+        if not self.clock_timer.is_alive():
+            self.refresh()
 
     def _clock_tick(self, _timer) -> None:
         """Redraw only. The engine is not advanced here; `poll` owns timing."""
@@ -210,6 +217,23 @@ class OnTaskApp(rumps.App):
             self.clock_timer.start()
         elif not running and self.clock_timer.is_alive():
             self.clock_timer.stop()
+
+    def _align_clock(self, elapsed: float) -> None:
+        """Keep the clock's redraws halfway between its seconds.
+
+        A redraw that lands right as a second turns over shows it late whenever
+        the main thread is held up (a poll asking a browser for its tab), and
+        the next one then follows quickly. Mid-second, a delay of up to half a
+        second changes nothing on screen. The phase shifts when a session is
+        resumed or time is taken off the clock, so it is checked on each redraw.
+        """
+        nstimer = getattr(self.clock_timer, "_nstimer", None)
+        if nstimer is None:
+            return
+        wanted = seconds_to_mid_second(elapsed)
+        scheduled = nstimer.fireDate().timeIntervalSinceNow()
+        if phase_gap(scheduled, wanted) > CLOCK_SLACK_SECONDS:
+            nstimer.setFireDate_(NSDate.dateWithTimeIntervalSinceNow_(wanted))
 
     def _on_answer(self, yes: bool) -> None:
         self.controller.answer(yes)
@@ -346,6 +370,8 @@ class OnTaskApp(rumps.App):
             item.state = 1 if name == snap.profile else 0
 
         self._pace_timers(snap.phase)
+        if snap.phase == RUNNING:
+            self._align_clock(snap.elapsed_seconds)
 
     # -- diagnostics ------------------------------------------------------
 
@@ -441,3 +467,13 @@ def run(config_path: Path | None = None) -> None:
     _hide_dock_icon()
     _install_delegate()
     OnTaskApp(config_path).run()
+
+
+def seconds_to_mid_second(elapsed: float) -> float:
+    """Time until `elapsed` next reaches a whole second plus a half."""
+    return (0.5 - elapsed) % 1.0
+
+
+def phase_gap(a: float, b: float) -> float:
+    """How far apart two once-a-second schedules are, from 0 to 0.5 s."""
+    return abs((a - b + 0.5) % 1.0 - 0.5)
