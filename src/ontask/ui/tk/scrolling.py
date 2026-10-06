@@ -10,6 +10,13 @@ made the statistics window misbehave:
   fractions of that.
 * X11 sends no wheel event at all, only button 4 (up) and button 5 (down).
 
+Sideways scrolling arrives as the same wheel event with Shift held: macOS
+splits each trackpad movement into a vertical event and, for any sideways
+drift of the fingers, a horizontal one right behind it. Read as vertical, that
+drift (usually against the swipe) stepped the view back off the bottom and the
+next tick pushed it back again, shaking the report. These views only scroll
+vertically, so horizontal events are ignored.
+
 `wheel_steps` turns any of those into a signed number of steps, keeping the
 direction symmetric, and `WheelScroller` adds them up so fractional touchpad
 movement accumulates smoothly instead of being lost or rounded into jumps.
@@ -39,9 +46,14 @@ WINDOWS_NOTCH = 120
 
 WHEEL_EVENTS = ("<MouseWheel>", "<Button-4>", "<Button-5>")
 
+# Set in a wheel event's state when Tk means horizontal scrolling.
+SHIFT_MASK = 0x0001
+
 
 def wheel_steps(event, platform: str = sys.platform) -> float:
-    """Signed scroll steps for one wheel event. Positive scrolls down."""
+    """Signed vertical scroll steps for one wheel event. Positive scrolls down."""
+    if int(getattr(event, "state", 0) or 0) & SHIFT_MASK:
+        return 0.0
     number = getattr(event, "num", None)
     if number == 4:
         return -float(STEPS_PER_NOTCH)

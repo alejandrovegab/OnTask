@@ -17,8 +17,11 @@ except Exception:
     HAVE_TK = False
 
 
-def wheel(delta=0, num=None):
-    return SimpleNamespace(delta=delta, num=num, x_root=0, y_root=0)
+def wheel(delta=0, num=None, state=0):
+    return SimpleNamespace(delta=delta, num=num, state=state, x_root=0, y_root=0)
+
+
+SHIFT = 0x0001
 
 
 @unittest.skipUnless(HAVE_TK, "no Tk display")
@@ -34,6 +37,12 @@ class WheelStepsTest(unittest.TestCase):
     def test_x11_uses_buttons_four_and_five(self):
         self.assertEqual(wheel_steps(wheel(num=4), "linux"), -STEPS_PER_NOTCH)
         self.assertEqual(wheel_steps(wheel(num=5), "linux"), STEPS_PER_NOTCH)
+
+    def test_sideways_scrolling_is_ignored(self):
+        for platform in ("darwin", "win32"):
+            self.assertEqual(wheel_steps(wheel(2, state=SHIFT), platform), 0)
+        # Other modifiers (here a held mouse button) don't make it sideways.
+        self.assertEqual(wheel_steps(wheel(-2, state=0x100), "darwin"), 2)
 
 
 @unittest.skipUnless(HAVE_TK, "no Tk display")
@@ -118,6 +127,18 @@ class WheelScrollerTest(unittest.TestCase):
         with mock.patch.object(self.area, "winfo_containing", return_value=self.canvas):
             self.scroller.on_wheel(wheel(-3))
         self.assertEqual(self.top(), 48)
+
+    def test_sideways_drift_does_not_shake_the_bottom(self):
+        # A real swipe into the bottom on macOS: each vertical event (state 0)
+        # is followed by the fingers' sideways drift (Shift), against it.
+        swipe = [(-6, 0), (1, SHIFT), (-7, 0), (2, SHIFT), (-3, 0), (-7, 0), (1, SHIFT)]
+        self.canvas.yview_moveto(self.BOTTOM / self.CONTENT)
+        tops = []
+        with mock.patch.object(self.area, "winfo_containing", return_value=self.canvas):
+            for delta, state in swipe:
+                self.scroller.on_wheel(wheel(delta, state=state))
+                tops.append(self.top())
+        self.assertEqual(set(tops), {self.BOTTOM})  # was 691 / 707 alternating
 
 
 if __name__ == "__main__":
