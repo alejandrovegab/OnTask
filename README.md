@@ -150,6 +150,14 @@ Planned work, roughly in order. Each item lands as its own reviewed pull request
   - Packages for Flatpak, AUR, `.deb` and `.rpm`.
 - **Releases.** Downloadable builds from GitHub Releases.
 
+## How it's built
+
+OnTask is heavily vibe-coded: most of the code was written by Claude,
+Anthropic's AI. My part is deciding what it should do and how, reviewing the
+results, and testing every change by hand. Each change lands as its own pull
+request and must pass CI (lint, security scans and the full test suite on
+three operating systems) before it merges.
+
 ## Documentation
 
 - [User guide](docs/guide.md): every rule, menu item, browser detail and setting.
