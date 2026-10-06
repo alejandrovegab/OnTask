@@ -53,6 +53,16 @@ class Rule:
         return cls(kind=kind, pattern=body.lower(), raw=raw)
 
     @property
+    def display(self) -> str:
+        """The rule as a person would name it: no `app:`/`site:` and no scheme."""
+        body = self.raw
+        for prefix in ("app:", "site:", "url:", "domain:"):
+            if body.lower().startswith(prefix):
+                body = body[len(prefix) :].strip()
+                break
+        return _strip_scheme(body) if self.kind == "site" else body
+
+    @property
     def specificity(self) -> int:
         """Longer, more qualified patterns win over broad ones."""
         return len(self.pattern) + (10 if "/" in self.pattern else 0)
@@ -158,3 +168,97 @@ def suggest_rule(target: FocusTarget) -> str:
         host = target.host[4:] if target.host.startswith("www.") else target.host
         return f"site:{host}"
     return f"app:{target.app_name or target.bundle_id}"
+
+
+LIST_NAMES = {APPROVED: "approved", DISAPPROVED: "disapproved"}
+
+APPROVE = "approve"
+DISAPPROVE = "disapprove"
+REMOVE = "remove"
+
+
+@dataclass(frozen=True)
+class RuleAction:
+    """One thing the menu can do to the lists for the target in front.
+
+    `verb` is approve, disapprove or remove; `rule` is the stored rule text to
+    add to, or remove from, `listname` ("approved" or "disapproved").
+    """
+
+    verb: str
+    rule: str
+    listname: str
+
+
+def rule_actions(target: FocusTarget, approved, disapproved) -> list[RuleAction]:
+    """Only the list changes that would change `target`'s status.
+
+    Not listed: approve or disapprove it. Listed: put it on the other list, or
+    remove the rule that decided it. Nothing at all when nothing was detected.
+    """
+    if target.is_unknown:
+        return []
+    decided = classify(target, approved, disapproved)
+    if decided.status == UNAPPROVED:
+        rule = suggest_rule(target)
+        return [
+            RuleAction(APPROVE, rule, LIST_NAMES[APPROVED]),
+            RuleAction(DISAPPROVE, rule, LIST_NAMES[DISAPPROVED]),
+        ]
+    other = DISAPPROVED if decided.status == APPROVED else APPROVED
+    actions = []
+    flip = _flipping_rule(target, approved, disapproved, other, decided.rule)
+    if flip is not None:
+        actions.append(RuleAction(APPROVE if other == APPROVED else DISAPPROVE, flip, other))
+    if decided.rule is not None:
+        actions.append(RuleAction(REMOVE, decided.rule.raw, LIST_NAMES[decided.status]))
+    return actions
+
+
+def _flipping_rule(target, approved, disapproved, wanted, decider) -> str | None:
+    """The rule to add to `wanted` so the target ends up there, if any does.
+
+    The suggested rule (the site or app) comes first. A more specific rule on
+    the other list can outrank it, e.g. github.com/trending disapproved with
+    github.com approved; then the rule that decided is moved across instead.
+    """
+    candidates = [suggest_rule(target)]
+    if decider is not None and decider.raw not in candidates:
+        candidates.append(decider.raw)
+    for rule in candidates:
+        moved = moved_rule(approved, disapproved, rule, LIST_NAMES[wanted])
+        if classify(target, *moved).status == wanted:
+            return rule
+    return None
+
+
+def moved_rule(approved, disapproved, rule: str, listname: str) -> tuple[list, list]:
+    """Both lists after adding `rule` to `listname` and taking it off the other."""
+    approved = [r for r in approved or [] if r != rule]
+    disapproved = [r for r in disapproved or [] if r != rule]
+    if listname == LIST_NAMES[APPROVED]:
+        approved.append(rule)
+    else:
+        disapproved.append(rule)
+    return approved, disapproved
+
+
+def friendly_name(rule: str, target: FocusTarget | None = None) -> str:
+    """How banners and the menu name a rule: "Messages", "reddit.com/r/python".
+
+    An app rule written as a bundle id names the app it matched instead, so
+    `app:com.tinyspeck.slackmacgap` reads as "Slack" while Slack is in front.
+    """
+    parsed = Rule.parse(rule)
+    if parsed is None:
+        return rule
+    if (
+        parsed.kind == "app"
+        and target is not None
+        and target.app_name
+        and not any(c in parsed.pattern for c in "*?")
+        and parsed.pattern != target.app_name.lower()
+        and parsed.matches(target)
+    ):
+        return target.app_name
+    return parsed.display
