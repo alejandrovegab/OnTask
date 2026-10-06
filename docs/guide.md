@@ -44,10 +44,11 @@ long detour does not leave a check-in queued up the instant you get back.
 - Launching OnTask while it is already running opens its Settings rather than
   starting a second copy. It runs as a menu bar accessory, so it has no Dock
   icon.
-- Notification permission is only requested if you choose a notification
-  check-in style; otherwise OnTask reads the current status without raising a
-  dialog. **Permissions...** in the menu shows every grant's state and how to
-  fix a missing one.
+- OnTask asks for notification permission on its first launch, whatever the
+  check-in style, since banners also confirm what you approve or disapprove.
+  If you turn banners off, nothing else replaces those confirmations; the
+  menu's focus line shows the new status. **Permissions...** in the menu shows
+  every grant's state and how to fix a missing one.
 - Run from source, macOS permission prompts name your terminal and banners say
   "Python". The built app (`./scripts/build-mac-app.sh`) says OnTask, and keeps
   its permissions across rebuilds once the signing certificate in
