@@ -21,11 +21,11 @@ wander somewhere off-limits and it notices within seconds.
   to the next one (3 → 5 → 7 → 10 → 14 → 20 minutes), so deep focus earns fewer
   interruptions. A *no* resets it.
 - **Notices drift.** One minute on an app or site that isn't on your approved
-  list triggers a check-in; something you've blocked gets ten seconds.
+  list triggers a check-in; something you've disapproved gets ten seconds.
 - **Knows the site, not just the browser.** Reads the active tab in Safari,
   Chrome, Arc, Brave, Edge, Firefox, Zen and other browsers, so `github.com` and
   `youtube.com` are treated differently even in the same window.
-- **Precise rules and profiles.** Approve or block apps and sites down to a
+- **Precise rules and profiles.** Approve or disapprove apps and sites down to a
   path (`reddit.com/r/python`); the most specific rule wins. Keep separate lists
   for "Deep Work", "Writing", or whatever you need.
 - **Learns from you.** Keep saying yes to the same unlisted app and OnTask
@@ -102,7 +102,7 @@ breaking or asking again.
 ## Under the hood
 
 - **A testable core.** The reminder logic is a state machine with no UI or OS
-  calls, driven by a clock that tests replace, so 214 tests covering timing,
+  calls, driven by a clock that tests replace, so 223 tests covering timing,
   rules and platform behavior run in about a second.
 - **Browser tab detection.** AppleScript for Safari and Chromium browsers,
   addressed by bundle ID, with the right dialect detected per browser, and a
@@ -141,7 +141,7 @@ Planned work, roughly in order. Each item lands as its own reviewed pull request
   - The session clock pauses while a check-in is open.
   - A guard against answering by accident while typing.
   - Configurable sounds.
-  - An offer to block a site after repeated *no* answers.
+  - An offer to disapprove a site after repeated *no* answers.
 - **Private statistics.** Opt-in, aggregated per day and hour, domains only,
   encrypted with AES-256 using a key kept in the macOS keychain, and deletable
   by site or date range.

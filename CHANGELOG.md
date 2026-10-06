@@ -13,15 +13,15 @@ first release will be 0.1.0.
   check-ins out with each *yes* (3 → 5 → 7 → 10 → 14 → 20 minutes) and resets
   on a *no*.
 - Drift detection: a check-in after one minute, in total, on anything not
-  approved, or ten seconds on something blocked.
+  approved, or ten seconds on something disapproved.
 - Active-tab tracking in Safari, the Chromium family (Chrome, Arc, Brave, Edge,
   Vivaldi, Opera, Dia) and Firefox and its forks (Zen, LibreWolf, Floorp,
   Waterfox, Tor, Mullvad).
 - Browsers chosen on first launch from the ones installed, or added from Finder;
   each is identified by its bundle ID, and the way its tab is read is worked out
   from the app itself.
-- Approve and block rules for apps and sites, down to a path, where the most
-  specific rule wins; profiles with their own lists.
+- Approve and disapprove rules for apps and sites, down to a path, where the
+  most specific rule wins; profiles with their own lists.
 - An offer to approve an unlisted app or site after repeated *yes* answers.
 - Check-ins as a floating window, a notification banner with Yes/No buttons, or
   a banner that escalates to the window if ignored.
