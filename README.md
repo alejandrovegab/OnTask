@@ -102,12 +102,15 @@ breaking or asking again.
 ## Under the hood
 
 - **A testable core.** The reminder logic is a state machine with no UI or OS
-  calls, driven by a clock that tests replace, so 179 tests covering timing,
+  calls, driven by a clock that tests replace, so 200 tests covering timing,
   rules and platform behavior run in about a second.
 - **Browser tab detection.** AppleScript for Safari and Chromium browsers,
   addressed by bundle ID, with the right dialect detected per browser, and a
   bounded walk of the macOS accessibility tree for Firefox and its forks.
   Browsers are identified from their app bundle, not by name.
+- **Idle means idle.** Between sessions and while paused, OnTask stops reading
+  the frontmost window and redrawing its clock. It looks only when you open its
+  menu.
 - **Security.**
   - Bundle IDs are validated before they reach AppleScript, closing a
     script-injection path.

@@ -29,6 +29,10 @@ first release will be 0.1.0.
 - Statistics: session and off-task time, the biggest distractions, best and
   worst hours, and a daily chart, over today, 7 or 30 days, or all time.
 - Global hotkeys to start a session and answer check-ins.
+- The menu's focus line works with no session running: switch to an app or
+  site and open the menu to see how your rules classify it.
+- No window reading between sessions or while paused, and no once-a-second
+  redraw; OnTask looks at the front window only when you open its menu.
 - **Permissions...** in the menu, showing each grant and how to fix a missing
   one.
 - A signed, double-clickable `OnTask.app` built by `scripts/build-mac-app.sh`.
