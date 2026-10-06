@@ -70,7 +70,7 @@ class SettingsWindowTest(unittest.TestCase):
         self.window.intervals_var.set("2, 6, 12")
         self.window.advance_var.set("1, 4")
         self.window.distraction_var.set("90")
-        self.window.blocked_var.set("5")
+        self.window.disapproved_var.set("5")
         self.window.policy_var.set("Pause the session")
         self.window.prompt_ui_var.set("Notification, then window")
         self.window.approved_text.delete("1.0", "end")
@@ -241,3 +241,70 @@ class FirstRunWindowTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+def _visible_text(widget) -> list[str]:
+    """Every `text` shown by `widget` and everything inside it."""
+    found = []
+    try:
+        text = str(widget.cget("text"))
+    except Exception:
+        text = ""
+    if text:
+        found.append(text)
+    for child in widget.winfo_children():
+        found.extend(_visible_text(child))
+    return found
+
+
+@unittest.skipUnless(HAVE_TK, "no Tk display")
+class WindowWordingTest(unittest.TestCase):
+    """OnTask reminds rather than blocks, and unlisted things are "not listed"."""
+
+    def setUp(self):
+        from unittest import mock
+
+        patcher = mock.patch(
+            "ontask.ui.tk.browser_setup.installed_browsers", return_value=list(INSTALLED)
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.path = Path(tmp.name) / "config.json"
+        Config().save(self.path)
+
+    def _texts(self, window_class) -> str:
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            window_class(root, self.path)
+            return "\n".join(_visible_text(root))
+        finally:
+            root.destroy()
+
+    def _assert_no_old_words(self, text: str) -> None:
+        for word in ("blocked", "block ", "unapproved"):
+            self.assertNotIn(word, text.lower())
+
+    def test_settings(self):
+        from ontask.ui.tk.settings import SettingsWindow
+
+        text = self._texts(SettingsWindow)
+        self._assert_no_old_words(text)
+        self.assertIn("Disapproved apps and sites", text)
+        self.assertIn("on a disapproved app", text)
+
+    def test_statistics(self):
+        from ontask.ui.tk.stats import StatsWindow
+
+        text = self._texts(StatsWindow)
+        self._assert_no_old_words(text)
+        self.assertIn("on disapproved apps and sites", text)
+
+    def test_first_run(self):
+        from ontask.ui.tk.browser_setup import FirstRunWindow
+
+        text = self._texts(FirstRunWindow)
+        self._assert_no_old_words(text)
+        self.assertIn("approved and\ndisapproved lists", text)

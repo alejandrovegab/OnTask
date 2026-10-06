@@ -167,9 +167,10 @@ class FirstRunWindow:
         ttk.Label(
             outer,
             text=(
-                "OnTask checks the site in your active tab against your approved and blocked\n"
-                "lists. Tick the browsers you want it to read. You can change this at any time\n"
-                "in Settings, and OnTask works without any of them - it just tracks apps only."
+                "OnTask checks the site in your active tab against your approved and\n"
+                "disapproved lists. Tick the browsers you want it to read. You can change this\n"
+                "at any time in Settings, and OnTask works without any of them - it just tracks\n"
+                "apps only."
             ),
             foreground="#555",
             justify="left",

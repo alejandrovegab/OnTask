@@ -53,7 +53,7 @@ class ActivePrompt:
 
     def question(self) -> str:
         if self.kind == BLOCKED:
-            return f"{self.target.label()} is on your blocked list. Still on task?"
+            return f"{self.target.label()} is on your disapproved list. Still on task?"
         if self.kind == DISTRACTION:
             return f"{self.target.label()} isn't on your approved list. Still on task?"
         return "Still on task?"

@@ -254,7 +254,7 @@ class StatsWindow:
             ("Sessions", str(s.session_count)),
             ("Average session", format_span(s.average_session_seconds)),
             ("Time off task", format_span(s.off_task_seconds)),
-            ("...of that, on blocked apps and sites", format_span(s.blocked_seconds)),
+            ("...of that, on disapproved apps and sites", format_span(s.blocked_seconds)),
             ("Share of session time off task", f"{s.distraction_rate * 100:.0f}%"),
             ("Check-ins answered yes", str(s.yes_count)),
             ("Check-ins answered no", str(s.no_count)),

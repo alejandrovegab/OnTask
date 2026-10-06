@@ -516,5 +516,58 @@ class IdleSamplingTest(unittest.TestCase):
         self.assertFalse(any(line.startswith("Focus:") for line in self.controller.status_lines()))
 
 
+class WordingTest(unittest.TestCase):
+    """What OnTask calls things on screen. It reminds; it never blocks anything."""
+
+    def setUp(self):
+        from ontask.app import Controller
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.path = Path(tmp.name) / "config.json"
+        make_config().save(self.path)
+        with mock.patch("ontask.app.get_provider") as provider:
+            self.focus = provider.return_value
+            self.controller = Controller(shell=mock.Mock(), config_path=self.path)
+
+    def _status_of(self, target):
+        self.focus.current.return_value = target
+        self.controller.look_now()
+        return self.controller.current_status_text()
+
+    def test_the_focus_line_names_each_status(self):
+        self.assertTrue(self._status_of(APPROVED_APP).endswith(" - approved"))
+        self.assertTrue(self._status_of(BLOCKED_SITE).endswith(" - disapproved"))
+        self.assertTrue(self._status_of(UNLISTED_APP).endswith(" - not listed"))
+
+    def test_the_check_in_names_the_disapproved_list(self):
+        from ontask.core.engine import ActivePrompt
+
+        question = ActivePrompt(kind=BLOCKED, target=BLOCKED_SITE, opened_at=0.0).question()
+        self.assertIn("is on your disapproved list", question)
+        self.assertNotIn("blocked", question.lower())
+
+    def test_disapproving_adds_the_rule_and_says_which_list(self):
+        self._status_of(UNLISTED_APP)
+        self.controller.disapprove_current()
+        self.assertIn("app:Messages", Config.load(self.path).profile("Test").disapproved)
+        self.controller.shell.notify.assert_called_with(
+            "OnTask", "Added app:Messages to the disapproved list for Test."
+        )
+
+    def test_approving_says_which_list(self):
+        self._status_of(UNLISTED_APP)
+        self.controller.approve_current()
+        self.controller.shell.notify.assert_called_with(
+            "OnTask", "Added app:Messages to the approved list for Test."
+        )
+
+    def test_the_settings_file_keeps_its_words(self):
+        # Only the screen wording changed; existing config files must load as-is.
+        saved = make_config().to_dict()
+        self.assertIn("disapproved", saved["profiles"][0])
+        self.assertIn("disapproved_grace_seconds", saved["reminder"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
