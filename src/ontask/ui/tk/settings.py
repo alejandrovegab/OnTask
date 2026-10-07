@@ -9,13 +9,22 @@ Usage: python -m ontask.ui.tk.settings [path/to/config.json]
 
 from __future__ import annotations
 
+import copy
 import sys
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
 
 from ontask import ipc
-from ontask.core.config import ClockPenalty, Config, NoResponse, Profile
+from ontask.core.config import (
+    ClockPenalty,
+    Config,
+    NoResponse,
+    Profile,
+    default_config_path,
+    merge_edits,
+    read_existing,
+)
 from ontask.ui.tk.browser_setup import BrowserList
 from ontask.ui.tk.window import bring_to_front, fit_to_screen, watch_raise
 
@@ -36,7 +45,14 @@ class SettingsWindow:
         self.root.minsize(780, 660)
         self._build()
         self._load_into_widgets()
+        self._mark_saved()
         fit_to_screen(self.root)
+        self.root.protocol("WM_DELETE_WINDOW", self.close)
+        try:
+            # Cmd-Q on macOS, which would otherwise quit without asking.
+            self.root.createcommand("::tk::mac::Quit", self.close)
+        except tk.TclError:
+            pass
 
     # -- construction -----------------------------------------------------
 
@@ -56,7 +72,7 @@ class SettingsWindow:
 
         self.status = ttk.Label(footer, text="")
         self.status.pack(side="left")
-        ttk.Button(footer, text="Close", command=self.root.destroy).pack(side="right")
+        ttk.Button(footer, text="Close", command=self.close).pack(side="right")
         ttk.Button(footer, text="Save", command=self.save).pack(side="right", padx=(0, 8))
         ttk.Button(footer, text="Revert", command=self.revert).pack(side="right", padx=(0, 8))
         ttk.Button(footer, text="Restore Defaults", command=self.restore_defaults).pack(
@@ -419,6 +435,8 @@ class SettingsWindow:
         if self.config.active_profile == profile.name:
             self.config.active_profile = new_name
         profile.name = new_name
+        if self.current_profile in self._origins:
+            self._origins[new_name] = self._origins.pop(self.current_profile)
         index = self.profile_list.curselection()
         if index:
             self.profile_list.delete(index[0])
@@ -434,6 +452,7 @@ class SettingsWindow:
         if not messagebox.askyesno("OnTask", f"Delete the profile {name}?"):
             return
         self.config.profiles = [p for p in self.config.profiles if p.name != name]
+        self._origins.pop(name, None)
         if self.config.active_profile == name:
             self.config.active_profile = self.config.profiles[0].name
         self.current_profile = None
@@ -442,6 +461,7 @@ class SettingsWindow:
     def revert(self) -> None:
         self.config = Config.load(self.config.path)
         self._load_into_widgets()
+        self._mark_saved()
         self._flash("Reverted to the saved settings.")
 
     def restore_defaults(self) -> None:
@@ -452,23 +472,72 @@ class SettingsWindow:
         path = self.config.path
         self.config = Config()
         self.config.path = path
+        # Every profile is new, so saving replaces the old ones outright.
+        self._origins = {}
         self._load_into_widgets()
         self._flash("Defaults loaded. Choose Save to keep them.")
 
-    def save(self) -> None:
-        self._stash_profile_text()
+    def save(self) -> bool:
+        """Write the window's changes. False when a value is invalid.
+
+        Only what changed in the window is written, on top of the file as it is
+        now, so changes made from the menu while the window was open survive.
+        """
         try:
-            self._collect()
+            edited = self._edited()
         except ValueError as exc:
             messagebox.showerror("OnTask", str(exc))
-            return
-        self.config.normalize()
-        self.config.save()
+            return False
+        path = self.config.path or default_config_path()
+        latest = read_existing(path) or copy.deepcopy(self._saved)
+        self.config = merge_edits(self._saved, edited, latest, self._origins)
+        self.config.save(path)
         self._load_into_widgets()
+        self._mark_saved()
         self._flash(f"Saved to {self.config.path}")
+        return True
 
-    def _collect(self) -> None:
-        cfg = self.config
+    def close(self) -> None:
+        """Close, first offering to save anything changed in the window."""
+        if self.has_unsaved_changes():
+            choice = ask_save_changes(self.root)
+            if choice == CANCEL or (choice == SAVE and not self.save()):
+                return
+        self.root.destroy()
+
+    def has_unsaved_changes(self) -> bool:
+        """Whether the window holds edits made since it opened, saved or reverted.
+
+        Changes the menu writes meanwhile don't count: they are already saved.
+        A value that can't be saved counts as a change.
+        """
+        try:
+            return self._edited().to_dict() != self._saved.to_dict()
+        except ValueError:
+            return True
+
+    def _mark_saved(self) -> None:
+        """Remember what the window holds now, as the point edits are measured from.
+
+        Taken from the widgets rather than the file: the browser list, for one,
+        shows browsers in a different order and with fresher details than the
+        file has, which would otherwise look like an edit.
+        """
+        try:
+            self._saved = self._edited()
+        except ValueError:
+            self._saved = copy.deepcopy(self.config)
+        self._origins = {p.name: p.name for p in self.config.profiles}
+
+    def _edited(self) -> Config:
+        """The config the widgets would save. Raises ValueError on a bad value."""
+        self._stash_profile_text()
+        cfg = copy.deepcopy(self.config)
+        self._collect(cfg)
+        cfg.normalize()
+        return cfg
+
+    def _collect(self, cfg: Config) -> None:
         reminder = cfg.reminder
         intervals = _numbers(self.intervals_var.get(), "Intervals")
         if not intervals:
@@ -536,6 +605,51 @@ _POSITION_TO_LABEL = {
     "bottom_right": "Bottom right",
 }
 _LABEL_TO_POSITION = {v: k for k, v in _POSITION_TO_LABEL.items()}
+
+
+SAVE, DONT_SAVE, CANCEL = "save", "dont_save", "cancel"
+
+
+def ask_save_changes(root: tk.Misc) -> str:
+    """Ask "Save changes before closing?" with Save, Don't Save and Cancel.
+
+    Tk's own dialogs only offer Yes/No/Cancel, so this is a small modal window
+    laid out the way macOS lays out the same question. Returns SAVE, DONT_SAVE
+    or CANCEL; Return picks Save, and Escape or closing the dialog cancels.
+    """
+    dialog = tk.Toplevel(root)
+    dialog.title("OnTask")
+    dialog.transient(root)
+    dialog.resizable(False, False)
+    choice = [CANCEL]
+
+    def pick(value: str) -> None:
+        choice[0] = value
+        dialog.destroy()
+
+    frame = ttk.Frame(dialog, padding=16)
+    frame.pack(fill="both", expand=True)
+    ttk.Label(frame, text="Save changes before closing?", font=("", 13, "bold")).pack(anchor="w")
+    buttons = ttk.Frame(frame)
+    buttons.pack(fill="x", pady=(16, 0))
+    ttk.Button(buttons, text="Don't Save", command=lambda: pick(DONT_SAVE)).pack(side="left")
+    save = ttk.Button(buttons, text="Save", default="active", command=lambda: pick(SAVE))
+    save.pack(side="right")
+    ttk.Button(buttons, text="Cancel", command=lambda: pick(CANCEL)).pack(
+        side="right", padx=(24, 8)
+    )
+    dialog.bind("<Return>", lambda _e: pick(SAVE))
+    dialog.bind("<Escape>", lambda _e: pick(CANCEL))
+    dialog.protocol("WM_DELETE_WINDOW", lambda: pick(CANCEL))
+
+    dialog.update_idletasks()
+    x = root.winfo_rootx() + (root.winfo_width() - dialog.winfo_reqwidth()) // 2
+    y = root.winfo_rooty() + max(0, (root.winfo_height() - dialog.winfo_reqheight()) // 3)
+    dialog.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+    dialog.grab_set()
+    save.focus_set()
+    root.wait_window(dialog)
+    return choice[0]
 
 
 def _lines(widget: tk.Text) -> list[str]:

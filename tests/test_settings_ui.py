@@ -247,6 +247,210 @@ class SettingsWindowTest(unittest.TestCase):
 
 
 @unittest.skipUnless(HAVE_TK, "no Tk display")
+class UnsavedChangesTest(unittest.TestCase):
+    """Closing with edits asks first; Save keeps what the menu wrote meanwhile."""
+
+    def setUp(self):
+        from unittest import mock
+
+        from ontask.ui.tk.settings import SettingsWindow
+
+        patcher = mock.patch(
+            "ontask.ui.tk.browser_setup.installed_browsers", return_value=list(INSTALLED)
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name) / "config.json"
+        Config().save(self.path)
+        self.root = tk.Tk()
+        self.root.withdraw()
+        self.addCleanup(self._destroy)
+        self.window = SettingsWindow(self.root, self.path)
+
+    def _destroy(self):
+        try:
+            self.root.destroy()
+        except tk.TclError:
+            pass
+
+    def _closed(self) -> bool:
+        try:
+            self.root.winfo_exists()
+        except tk.TclError:
+            return True
+        return False
+
+    def _close_answering(self, choice):
+        from unittest import mock
+
+        with mock.patch("ontask.ui.tk.settings.ask_save_changes", return_value=choice) as ask:
+            self.window.close()
+        return ask
+
+    def _menu_approves(self, rule="site:example.com"):
+        # What the menu's Approve item does: load, add, save.
+        other = Config.load(self.path)
+        other.profile().approved.append(rule)
+        other.save()
+
+    def _set_approved(self, text):
+        self.window.approved_text.delete("1.0", "end")
+        self.window.approved_text.insert("1.0", text)
+
+    # -- what counts as unsaved --------------------------------------------
+
+    def test_an_untouched_window_has_nothing_unsaved(self):
+        self.assertFalse(self.window.has_unsaved_changes())
+
+    def test_an_edit_is_unsaved_until_it_is_undone(self):
+        self.window.distraction_var.set("90")
+        self.assertTrue(self.window.has_unsaved_changes())
+        self.window.distraction_var.set("60")
+        self.assertFalse(self.window.has_unsaved_changes())
+
+    def test_an_invalid_value_counts_as_a_change(self):
+        self.window.distraction_var.set("soon")
+        self.assertTrue(self.window.has_unsaved_changes())
+
+    def test_a_rule_edit_counts_on_any_profile(self):
+        self._set_approved("app:Code\n")
+        self.window.profile_list.selection_clear(0, "end")
+        self.window.profile_list.selection_set(1)
+        self.window._on_profile_selected()
+        self.assertTrue(self.window.has_unsaved_changes())
+
+    def test_profile_changes_count(self):
+        self.window.add_profile()
+        self.assertTrue(self.window.has_unsaved_changes())
+
+    def test_ticking_a_browser_counts(self):
+        for browser, var in self.window.browser_list._rows:
+            if browser.name == "Zen":
+                var.set(True)
+        self.assertTrue(self.window.has_unsaved_changes())
+
+    def test_nothing_is_unsaved_after_saving_or_reverting(self):
+        self.window.poll_var.set("3")
+        self.window.save()
+        self.assertFalse(self.window.has_unsaved_changes())
+        self.window.poll_var.set("4")
+        self.window.revert()
+        self.assertFalse(self.window.has_unsaved_changes())
+
+    def test_restored_defaults_are_unsaved_when_the_file_differs(self):
+        from unittest import mock
+
+        self.window.poll_var.set("3")
+        self.window.save()
+        with mock.patch("tkinter.messagebox.askyesno", return_value=True):
+            self.window.restore_defaults()
+        self.assertTrue(self.window.has_unsaved_changes())
+
+    def test_a_menu_change_alone_is_not_unsaved(self):
+        self._menu_approves()
+        self.assertFalse(self.window.has_unsaved_changes())
+
+    # -- closing -----------------------------------------------------------
+
+    def test_closing_an_untouched_window_does_not_ask(self):
+        ask = self._close_answering("cancel")
+        ask.assert_not_called()
+        self.assertTrue(self._closed())
+
+    def test_save_saves_then_closes(self):
+        self.window.poll_var.set("3")
+        self._close_answering("save")
+        self.assertTrue(self._closed())
+        self.assertEqual(Config.load(self.path).general.poll_seconds, 3)
+
+    def test_dont_save_closes_and_leaves_the_file_alone(self):
+        before = self.path.read_text()
+        self.window.poll_var.set("3")
+        self._close_answering("dont_save")
+        self.assertTrue(self._closed())
+        self.assertEqual(self.path.read_text(), before)
+
+    def test_cancel_keeps_the_window_and_the_edit(self):
+        self.window.poll_var.set("3")
+        self._close_answering("cancel")
+        self.assertFalse(self._closed())
+        self.assertEqual(self.window.poll_var.get(), "3")
+
+    def test_save_with_an_invalid_value_stays_open(self):
+        from unittest import mock
+
+        self.window.distraction_var.set("soon")
+        with mock.patch("tkinter.messagebox.showerror") as error:
+            self._close_answering("save")
+        error.assert_called_once()
+        self.assertFalse(self._closed())
+
+    def test_the_title_bar_close_button_asks_too(self):
+        from unittest import mock
+
+        # Tk hands back the command's Tcl name, not the method, so check it by
+        # calling it.
+        self.window.poll_var.set("3")
+        with mock.patch("ontask.ui.tk.settings.ask_save_changes", return_value="cancel") as ask:
+            self.root.tk.call(self.root.protocol("WM_DELETE_WINDOW"))
+        ask.assert_called_once()
+
+    # -- saving over menu changes ------------------------------------------
+
+    def test_save_keeps_a_rule_the_menu_added_meanwhile(self):
+        self._menu_approves("site:example.com")
+        self.window.poll_var.set("3")
+        self.window.save()
+        saved = Config.load(self.path)
+        self.assertIn("site:example.com", saved.profile("Deep Work").approved)
+        self.assertEqual(saved.general.poll_seconds, 3)
+
+    def test_save_shows_what_the_menu_added(self):
+        self._menu_approves("site:example.com")
+        self.window.poll_var.set("3")
+        self.window.save()
+        self.assertIn("site:example.com", self.window.approved_text.get("1.0", "end"))
+
+    def test_both_sides_rule_additions_are_kept(self):
+        self._menu_approves("site:example.com")
+        self._set_approved(self.window.approved_text.get("1.0", "end") + "app:Figma\n")
+        self.window.save()
+        approved = Config.load(self.path).profile("Deep Work").approved
+        self.assertIn("site:example.com", approved)
+        self.assertIn("app:Figma", approved)
+
+    def test_a_renamed_profile_keeps_the_menus_rule(self):
+        from unittest import mock
+
+        self._menu_approves("site:example.com")
+        with mock.patch("ontask.ui.tk.settings._ask_text", return_value="Focus"):
+            self.window.rename_profile()
+        self.window.save()
+        saved = Config.load(self.path)
+        self.assertEqual(saved.profile_names(), ["Focus", "Writing"])
+        self.assertIn("site:example.com", saved.profile("Focus").approved)
+        self.assertEqual(saved.active_profile, "Focus")
+
+    def test_a_profile_switched_from_the_menu_stays_active(self):
+        other = Config.load(self.path)
+        other.active_profile = "Writing"
+        other.save()
+        self.window.poll_var.set("3")
+        self.window.save()
+        self.assertEqual(Config.load(self.path).active_profile, "Writing")
+
+    def test_a_damaged_file_is_replaced_with_the_window_as_a_whole(self):
+        self.window.poll_var.set("3")
+        self.path.write_text("{not json")
+        self.window.save()
+        saved = Config.load(self.path)
+        self.assertEqual(saved.general.poll_seconds, 3)
+        self.assertEqual(saved.profile_names(), ["Deep Work", "Writing"])
+
+
+@unittest.skipUnless(HAVE_TK, "no Tk display")
 class FirstRunWindowTest(unittest.TestCase):
     def setUp(self):
         from unittest import mock
