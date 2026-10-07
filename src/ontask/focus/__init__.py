@@ -7,9 +7,11 @@ when that app is a supported browser, the URL of the active tab.
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
+
+from .. import APP_NAME, BUNDLE_ID
 
 if TYPE_CHECKING:
     from ..core.browsers import Browser
@@ -21,6 +23,9 @@ class FocusTarget:
     bundle_id: str = ""
     url: str = ""
     title: str = ""
+    # The process in front, where the platform says; 0 when unknown. Not part of
+    # what a target *is*: two looks at the same app are the same target.
+    pid: int = field(default=0, compare=False, repr=False)
 
     @property
     def is_unknown(self) -> bool:
@@ -59,6 +64,18 @@ class FocusTarget:
 
 
 UNKNOWN = FocusTarget()
+
+# OnTask's own windows, whichever way it was started. From source, Settings and
+# Statistics run as "Python", and a rule for Python would cover every Python
+# program; the built app already reports this.
+OWN_APP = FocusTarget(app_name=APP_NAME, bundle_id=BUNDLE_ID)
+
+
+def own_or(target: FocusTarget, own_pids: set[int]) -> FocusTarget:
+    """`target`, or OWN_APP when its process is one of OnTask's own."""
+    if target.pid and target.pid in own_pids:
+        return OWN_APP
+    return target
 
 
 class FocusProvider:

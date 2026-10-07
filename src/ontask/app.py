@@ -7,6 +7,7 @@ marshalling, editing the approved list - lives here so both shells stay thin.
 
 from __future__ import annotations
 
+import os
 import queue
 import subprocess
 import time
@@ -25,7 +26,7 @@ from .core.matching import (
     friendly_name,
     rule_actions,
 )
-from .focus import UNKNOWN, FocusTarget, get_provider
+from .focus import UNKNOWN, FocusTarget, get_provider, own_or
 from .stats import Stats, default_stats_path
 
 
@@ -143,9 +144,20 @@ class Controller:
     def look_now(self) -> None:
         """Read the frontmost app (and its tab) once, e.g. as the menu opens."""
         try:
-            self.target = self.focus.current(self.config.general.browsers)
+            target = self.focus.current(self.config.general.browsers)
         except Exception:
             self.target = UNKNOWN
+            return
+        self.target = own_or(target, self._own_pids())
+
+    def _own_pids(self) -> set[int]:
+        """This process and the windows it opened that are still open."""
+        pids = {os.getpid()}
+        for attribute in ("_settings_proc", "_setup_proc", "_stats_proc"):
+            proc = getattr(self, attribute, None)
+            if proc is not None and proc.poll() is None:
+                pids.add(proc.pid)
+        return pids
 
     def _handle(self, events) -> None:
         for event in events:
