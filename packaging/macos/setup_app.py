@@ -10,12 +10,10 @@ from pathlib import Path
 
 from setuptools import setup
 
+from ontask import BUNDLE_ID
+
 ROOT = Path(__file__).resolve().parents[2]
 VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
-
-# Shared with the Flatpak, and how macOS, the keychain and notifications know
-# the app. Changing it resets every user's permissions, so it stays fixed.
-BUNDLE_ID = "io.github.alejandrovegab.OnTask"
 
 setup(
     app=[str(Path(__file__).with_name("launch.py"))],
