@@ -87,9 +87,10 @@ offers that rule instead and moves it to the other list. On a site inside a
 broader rule (`docs.google.com` with `google.com` disapproved), you get both:
 **Approve docs.google.com** adds just that site as an exception, and
 **Approve google.com** moves the whole site to the approved list. On a website
-in a browser you approved as a whole (`app:Safari`), the menu offers only to
-disapprove the site; changing the browser's own rule is left to Settings. When
-OnTask can't tell what is in front, a greyed-out "Nothing to approve or
+in a disapproved browser, the menu offers to approve the site or to remove the
+browser's rule; approving the browser wouldn't approve the site (see
+[Browsers and sites](#browsers-and-sites)), so it isn't offered. When OnTask
+can't tell what is in front, a greyed-out "Nothing to approve or
 disapprove" takes the items' place.
 
 ### Hotkeys
@@ -192,16 +193,43 @@ One per line, in either list:
 | `youtube.com` | bare, has a dot, so a site |
 
 The **most specific matching rule wins**, so approving `github.com` while
-disapproving `github.com/trending` does what you would expect. On a tie, the
-disapproved list wins. Approving a browser itself (`app:Safari`) approves every
-tab in it that you haven't listed; a site you've disapproved still counts as
-disapproved.
+disapproving `github.com/trending` does what you would expect. For apps,
+"specific" means how exactly a rule picks the app out: its bundle id beats its
+name, and a name beats a wildcard, so with `app:com.apple.Notes` approved and
+`app:Notes` disapproved, Apple's Notes is approved and any other app called
+Notes is disapproved. On a tie, the disapproved list wins. On a website, site
+rules come first; see [Browsers and sites](#browsers-and-sites).
 
 OnTask's own windows, Settings and Statistics, count as an app called OnTask,
 like any other app: tweaking settings or reading your statistics is easy to
 drift into, so it isn't a free pass. If that time is part of your work, approve
 OnTask (`app:OnTask`). The check-in window is different: while it waits for
 your answer, nothing counts.
+
+### Browsers and sites
+
+On a website, **site rules decide**. A browser's own rule (`app:Safari`) only
+matters when no site rule matches, and then only if the browser is
+disapproved:
+
+| Where you are | Your rules | Counts as | What happens |
+| --- | --- | --- | --- |
+| youtube.com | Safari approved | not listed | check-in after 1 minute off task |
+| youtube.com | Safari approved, youtube.com disapproved | disapproved | check-in after 10 seconds |
+| youtube.com | Safari disapproved | disapproved | check-in after 10 seconds |
+| github.com | Safari disapproved, github.com approved | approved | no extra check-ins |
+| Safari's new tab page | Safari approved | approved | no extra check-ins |
+| Safari's new tab page | Safari disapproved | disapproved | check-in after 10 seconds |
+
+Disapproving a browser makes sense for one you keep for things you don't want
+to do during a session: every site in it counts as disapproved unless you've
+approved that site. Approving a browser, on the other hand, approves nothing
+on websites, because a browser is a way to reach any site, good or bad; list
+the sites you work in instead.
+
+Where there is no site to go by, the browser is an ordinary app and its rule
+counts either way: its new tab page or an empty window, a tab OnTask couldn't
+read, and any browser whose tab tracking is off in Settings → General.
 
 ### Answering No
 

@@ -26,8 +26,10 @@ wander somewhere off-limits and it notices within seconds.
   Chrome, Arc, Brave, Edge, Firefox, Zen and other browsers, so `github.com` and
   `youtube.com` are treated differently even in the same window.
 - **Precise rules and profiles.** Approve or disapprove apps and sites down to a
-  path (`reddit.com/r/python`); the most specific rule wins. Keep separate lists
-  for "Deep Work", "Writing", or whatever you need.
+  path (`reddit.com/r/python`); the most specific rule wins, and on a website
+  site rules beat the browser's. Disapprove a whole browser you keep for
+  distractions. Keep separate lists for "Deep Work", "Writing", or whatever you
+  need.
 - **Learns from you.** Keep saying yes to the same unlisted app and OnTask
   offers to approve it.
 - **See what it sees.** Click the menu bar icon and it names the app or site
@@ -108,7 +110,7 @@ breaking or asking again.
 ## Under the hood
 
 - **A testable core.** The reminder logic is a state machine with no UI or OS
-  calls, driven by a clock that tests replace, so 311 tests covering timing,
+  calls, driven by a clock that tests replace, so 325 tests covering timing,
   rules and platform behavior run in about a second.
 - **Browser tab detection.** AppleScript for Safari and Chromium browsers,
   addressed by bundle ID, with the right dialect detected per browser, and a
@@ -153,9 +155,6 @@ Planned work, roughly in order. Each item lands as its own reviewed pull request
   Lists show plain names with an App or Website tag, and there's a text view
   for typing rules directly. Share a list with a friend as a file or as copied
   text.
-- **Clearer browser rules.** On a website, only site rules decide. Disapproving
-  a whole browser still covers every site you haven't approved in it, but
-  approving a browser no longer approves its sites.
 - **Hotkeys without permissions.** System-registered shortcuts in place of a
   global keyboard listener, so no Accessibility access is needed. Adds a
   click-and-press shortcut editor and more actions.

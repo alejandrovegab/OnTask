@@ -21,7 +21,9 @@ first release will be 0.1.0.
   each is identified by its bundle ID, and the way its tab is read is worked out
   from the app itself.
 - Approve and disapprove rules for apps and sites, down to a path, where the
-  most specific rule wins; profiles with their own lists.
+  most specific rule wins; on a website, site rules beat the browser's own rule,
+  and a disapproved browser covers the sites you haven't approved in it.
+  Profiles with their own lists.
 - An offer to approve an unlisted app or site after repeated *yes* answers.
 - Check-ins as a floating window, a notification banner with Yes/No buttons, or
   a banner that escalates to the window if ignored.
