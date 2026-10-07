@@ -86,10 +86,10 @@ specific rule decided, say `github.com/trending` is disapproved while
 offers that rule instead and moves it to the other list. On a site inside a
 broader rule (`docs.google.com` with `google.com` disapproved), you get both:
 **Approve docs.google.com** adds just that site as an exception, and
-**Approve google.com** moves the whole site to the approved list. On a website
-in a disapproved browser, the menu offers to approve the site or to remove the
-browser's rule; approving the browser wouldn't approve the site (see
-[Browsers and sites](#browsers-and-sites)), so it isn't offered. When OnTask
+**Approve google.com** moves the whole site to the approved list. On a website,
+the only browser item the menu offers is removing a disapproved browser from
+the disapproved list (see [Browsers and sites](#browsers-and-sites)); approve or
+disapprove a browser itself from its new tab page, or in Settings. When OnTask
 can't tell what is in front, a greyed-out "Nothing to approve or
 disapprove" takes the items' place.
 
@@ -197,8 +197,8 @@ disapproving `github.com/trending` does what you would expect. For apps,
 "specific" means how exactly a rule picks the app out: its bundle id beats its
 name, and a name beats a wildcard, so with `app:com.apple.Notes` approved and
 `app:Notes` disapproved, Apple's Notes is approved and any other app called
-Notes is disapproved. On a tie, the disapproved list wins. On a website, site
-rules come first; see [Browsers and sites](#browsers-and-sites).
+Notes is disapproved. On a tie, the disapproved list wins. Websites have one
+more rule about browsers; see [Browsers and sites](#browsers-and-sites).
 
 OnTask's own windows, Settings and Statistics, count as an app called OnTask,
 like any other app: tweaking settings or reading your statistics is easy to
@@ -208,24 +208,25 @@ your answer, nothing counts.
 
 ### Browsers and sites
 
-On a website, **site rules decide**. A browser's own rule (`app:Safari`) only
-matters when no site rule matches, and then only if the browser is
-disapproved:
+On a website, **a disapproved browser covers every site in it**, even sites
+you've approved. Otherwise **site rules decide**, and an approved browser
+counts for nothing:
 
-| Where you are | Your rules | Counts as | What happens |
-| --- | --- | --- | --- |
-| youtube.com | Safari approved | not listed | check-in after 1 minute off task |
-| youtube.com | Safari approved, youtube.com disapproved | disapproved | check-in after 10 seconds |
-| youtube.com | Safari disapproved | disapproved | check-in after 10 seconds |
-| github.com | Safari disapproved, github.com approved | approved | no extra check-ins |
-| Safari's new tab page | Safari approved | approved | no extra check-ins |
-| Safari's new tab page | Safari disapproved | disapproved | check-in after 10 seconds |
+| Where you are | Your rules | Counts as | What happens | The menu offers |
+| --- | --- | --- | --- | --- |
+| github.com | Safari disapproved, github.com approved | disapproved | check-in after 10 seconds | Remove Safari from Disapproved |
+| youtube.com | Safari disapproved | disapproved | check-in after 10 seconds | Remove Safari from Disapproved |
+| example.com | Safari approved | not listed | check-in after 1 minute off task | Approve or Disapprove example.com |
+| youtube.com | Safari approved, youtube.com disapproved | disapproved | check-in after 10 seconds | Approve youtube.com, Remove youtube.com from Disapproved |
+| Safari's new tab page | Safari disapproved | disapproved | check-in after 10 seconds | Approve Safari, Remove Safari from Disapproved |
+| Safari's new tab page | Safari approved | approved | no extra check-ins | Disapprove Safari, Remove Safari from Approved |
 
 Disapproving a browser makes sense for one you keep for things you don't want
-to do during a session: every site in it counts as disapproved unless you've
-approved that site. Approving a browser, on the other hand, approves nothing
-on websites, because a browser is a way to reach any site, good or bad; list
-the sites you work in instead.
+to do during a session. Ending up in it is usually an accident, like a link
+opening in the wrong browser, so OnTask tells you quickly, whatever the site.
+Approving a browser, on the other hand, approves nothing on websites, because
+a browser is a way to reach any site, good or bad; list the sites you work in
+instead.
 
 Where there is no site to go by, the browser is an ordinary app and its rule
 counts either way: its new tab page or an empty window, a tab OnTask couldn't

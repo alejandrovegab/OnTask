@@ -26,10 +26,10 @@ wander somewhere off-limits and it notices within seconds.
   Chrome, Arc, Brave, Edge, Firefox, Zen and other browsers, so `github.com` and
   `youtube.com` are treated differently even in the same window.
 - **Precise rules and profiles.** Approve or disapprove apps and sites down to a
-  path (`reddit.com/r/python`); the most specific rule wins, and on a website
-  site rules beat the browser's. Disapprove a whole browser you keep for
-  distractions. Keep separate lists for "Deep Work", "Writing", or whatever you
-  need.
+  path (`reddit.com/r/python`); the most specific rule wins. On a website, site
+  rules beat an approved browser, and disapproving a browser you keep for
+  distractions covers every site in it. Keep separate lists for "Deep Work",
+  "Writing", or whatever you need.
 - **Learns from you.** Keep saying yes to the same unlisted app and OnTask
   offers to approve it.
 - **See what it sees.** Click the menu bar icon and it names the app or site
@@ -110,7 +110,7 @@ breaking or asking again.
 ## Under the hood
 
 - **A testable core.** The reminder logic is a state machine with no UI or OS
-  calls, driven by a clock that tests replace, so 325 tests covering timing,
+  calls, driven by a clock that tests replace, so 327 tests covering timing,
   rules and platform behavior run in about a second.
 - **Browser tab detection.** AppleScript for Safari and Chromium browsers,
   addressed by bundle ID, with the right dialect detected per browser, and a
