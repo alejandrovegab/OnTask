@@ -97,6 +97,10 @@ class MacFocusProvider(FocusProvider):
             return FocusTarget()
         name = str(app.localizedName() or "")
         bundle = str(app.bundleIdentifier() or "")
+        try:
+            pid = int(app.processIdentifier())
+        except Exception:
+            pid = 0
         enabled = browsers if browsers is not None else default_browsers()
         browser = self._match(name, bundle, enabled)
         if (
@@ -104,13 +108,9 @@ class MacFocusProvider(FocusProvider):
             or browser.flavour == UNSUPPORTED
             or browser.name in self.blocked_browsers
         ):
-            return FocusTarget(app_name=name, bundle_id=bundle)
-        try:
-            pid = int(app.processIdentifier())
-        except Exception:
-            pid = -1
+            return FocusTarget(app_name=name, bundle_id=bundle, pid=pid)
         url, title = self._tab_of(browser, pid)
-        return FocusTarget(app_name=name, bundle_id=bundle, url=url, title=title)
+        return FocusTarget(app_name=name, bundle_id=bundle, url=url, title=title, pid=pid)
 
     def _match(self, name: str, bundle: str, enabled: list[Browser]) -> Browser | None:
         for browser in enabled:
@@ -186,7 +186,7 @@ class MacFocusProvider(FocusProvider):
         )
 
     def _tab_via_accessibility(self, browser: Browser, pid: int) -> tuple[str, str]:
-        if pid < 0:
+        if pid <= 0:
             return "", ""
         try:
             from .ax import accessibility_trusted, address_bar

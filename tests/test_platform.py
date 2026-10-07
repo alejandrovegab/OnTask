@@ -4,6 +4,8 @@ The AppleScript call is stubbed so these run without touching a real browser or
 triggering the Automation permission prompt.
 """
 
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -230,6 +232,10 @@ class MacFocusProviderTest(unittest.TestCase):
         stdout, code, stderr = script_result
         self._run = mock.Mock(return_value=mock.Mock(returncode=code, stdout=stdout, stderr=stderr))
         return provider
+
+    def test_the_process_in_front_is_reported(self):
+        provider = self._provider("Xcode", "com.apple.dt.Xcode")
+        self.assertEqual(provider.current(default_browsers()).pid, 4242)
 
     def test_non_browser_skips_applescript(self):
         provider = self._provider("Xcode", "com.apple.dt.Xcode")
@@ -765,6 +771,91 @@ class SelfCommandTest(unittest.TestCase):
 
         for name, module in WINDOWS.items():
             self.assertTrue(callable(importlib.import_module(module).main), name)
+
+
+class OwnWindowsTest(unittest.TestCase):
+    """OnTask's own windows count as "OnTask", never as "Python"."""
+
+    PYTHON = "org.python.python"
+
+    def setUp(self):
+        from ontask.app import Controller
+        from ontask.core.config import Config
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "config.json"
+        Config().save(path)
+        with mock.patch("ontask.app.get_provider"):
+            self.controller = Controller(config_path=path)
+        self.focus = self.controller.focus = mock.Mock()
+
+    def _child(self):
+        # A real process, as Settings is: the controller asks it if it's alive.
+        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        self.addCleanup(proc.wait)
+        self.addCleanup(proc.kill)
+        return proc
+
+    def _front(self, pid, name="Python", bundle=PYTHON):
+        self.focus.current.return_value = FocusTarget(app_name=name, bundle_id=bundle, pid=pid)
+        self.controller.look_now()
+        return self.controller.target
+
+    def test_an_open_settings_window_is_ontask(self):
+        from ontask.focus import OWN_APP
+
+        self.controller._settings_proc = self._child()
+        self.assertEqual(self._front(self.controller._settings_proc.pid), OWN_APP)
+
+    def test_statistics_and_first_run_are_ontask_too(self):
+        from ontask.focus import OWN_APP
+
+        self.controller._stats_proc = self._child()
+        self.controller._setup_proc = self._child()
+        self.assertEqual(self._front(self.controller._stats_proc.pid), OWN_APP)
+        self.assertEqual(self._front(self.controller._setup_proc.pid), OWN_APP)
+
+    def test_the_menu_bar_process_itself_is_ontask(self):
+        from ontask.focus import OWN_APP
+
+        self.assertEqual(self._front(os.getpid()), OWN_APP)
+
+    def test_other_python_programs_stay_python(self):
+        self.controller._settings_proc = self._child()
+        other = self._child()
+        self.assertEqual(self._front(other.pid).app_name, "Python")
+
+    def test_a_closed_window_no_longer_counts(self):
+        # Its process number could be handed to another program later.
+        proc = self._child()
+        proc.kill()
+        proc.wait()
+        self.controller._settings_proc = proc
+        self.assertEqual(self._front(proc.pid).app_name, "Python")
+
+    def test_without_a_process_number_nothing_changes(self):
+        self.assertEqual(self._front(0).app_name, "Python")
+
+    def test_the_menu_offers_to_approve_ontask(self):
+        from ontask.core.matching import suggest_rule
+        from ontask.focus import OWN_APP
+
+        self.assertEqual(suggest_rule(OWN_APP), "app:OnTask")
+
+    def test_an_ontask_rule_and_a_python_rule_stay_apart(self):
+        from ontask.core.matching import APPROVED, UNAPPROVED, classify
+        from ontask.focus import OWN_APP
+
+        python = FocusTarget(app_name="Python", bundle_id=self.PYTHON)
+        self.assertEqual(classify(OWN_APP, ["app:OnTask"], []).status, APPROVED)
+        self.assertEqual(classify(python, ["app:OnTask"], []).status, UNAPPROVED)
+        self.assertEqual(classify(OWN_APP, ["app:Python"], []).status, UNAPPROVED)
+
+    def test_the_process_number_is_not_part_of_what_a_target_is(self):
+        a = FocusTarget(app_name="Notes", bundle_id="com.apple.Notes", pid=1)
+        b = FocusTarget(app_name="Notes", bundle_id="com.apple.Notes", pid=2)
+        self.assertEqual(a, b)
 
 
 class EntryPointTest(unittest.TestCase):
