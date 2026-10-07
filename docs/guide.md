@@ -79,17 +79,21 @@ were in at the moment you open the menu. To check a rule, switch to the app or
 site and click the menu bar icon. Between sessions, and while paused, that is
 the only time OnTask looks at your windows.
 
-The list items below it only ever offer a change that would change that
-status. Usually Approve or Disapprove adds the site or app itself. If a more
+The list items below it offer Approve or Disapprove only where that would
+change that status. Usually Approve or Disapprove adds the site or app itself. If a more
 specific rule decided, say `github.com/trending` is disapproved while
 `github.com` is approved, adding the site would change nothing, so the item
 offers that rule instead and moves it to the other list. On a site inside a
 broader rule (`docs.google.com` with `google.com` disapproved), you get both:
 **Approve docs.google.com** adds just that site as an exception, and
-**Approve google.com** moves the whole site to the approved list. On a website
-in a browser you approved as a whole (`app:Safari`), the menu offers only to
-disapprove the site; changing the browser's own rule is left to Settings. When
-OnTask can't tell what is in front, a greyed-out "Nothing to approve or
+**Approve google.com** moves the whole site to the approved list. On a website,
+the only browser item the menu offers is removing a disapproved browser from
+the disapproved list (see [Browsers and sites](#browsers-and-sites)); approve or
+disapprove a browser itself from its new tab page, or in Settings. **Remove**
+takes away the rule that decided. If a broader rule on the same list also
+covers what you're on, say `github.com` as well as `github.com/anthropics`, that
+one takes over, so the status can stay the same. When OnTask can't tell what is
+in front, a greyed-out "Nothing to approve or
 disapprove" takes the items' place.
 
 ### Hotkeys
@@ -104,7 +108,7 @@ When the check-in window is focused, plain `Y` and `N` work too. Rebind or blank
 them out in Settings → General using [pynput syntax](https://pynput.readthedocs.io/en/latest/keyboard.html#global-hotkeys),
 e.g. `<ctrl>+<alt>+f`.
 
-### Browsers
+### Browser tracking
 
 On first launch OnTask asks which browsers you use, listing the ones macOS
 reports as installed with their own icons. Change the answer at any time in
@@ -192,16 +196,44 @@ One per line, in either list:
 | `youtube.com` | bare, has a dot, so a site |
 
 The **most specific matching rule wins**, so approving `github.com` while
-disapproving `github.com/trending` does what you would expect. On a tie, the
-disapproved list wins. Approving a browser itself (`app:Safari`) approves every
-tab in it that you haven't listed; a site you've disapproved still counts as
-disapproved.
+disapproving `github.com/trending` does what you would expect. For apps,
+"specific" means how exactly a rule picks the app out: its bundle id beats its
+name, and a name beats a wildcard, so with `app:com.apple.Notes` approved and
+`app:Notes` disapproved, Apple's Notes is approved and any other app called
+Notes is disapproved. On a tie, the disapproved list wins. Websites have one
+more rule about browsers; see [Browsers and sites](#browsers-and-sites).
 
 OnTask's own windows, Settings and Statistics, count as an app called OnTask,
 like any other app: tweaking settings or reading your statistics is easy to
 drift into, so it isn't a free pass. If that time is part of your work, approve
 OnTask (`app:OnTask`). The check-in window is different: while it waits for
 your answer, nothing counts.
+
+#### Browsers and sites
+
+On a website, **a disapproved browser covers every site in it**, even sites
+you've approved. Otherwise **site rules decide**, and an approved browser
+counts for nothing:
+
+| Where you are | Your rules | Counts as | What happens | The menu offers |
+| --- | --- | --- | --- | --- |
+| github.com | Safari disapproved, github.com approved | disapproved | check-in after 10 seconds | Remove Safari from Disapproved |
+| youtube.com | Safari disapproved | disapproved | check-in after 10 seconds | Remove Safari from Disapproved |
+| example.com | Safari approved | not listed | check-in after 1 minute off task | Approve or Disapprove example.com |
+| youtube.com | Safari approved, youtube.com disapproved | disapproved | check-in after 10 seconds | Approve youtube.com, Remove youtube.com from Disapproved |
+| Safari's new tab page | Safari disapproved | disapproved | check-in after 10 seconds | Approve Safari, Remove Safari from Disapproved |
+| Safari's new tab page | Safari approved | approved | no extra check-ins | Disapprove Safari, Remove Safari from Approved |
+
+Disapproving a browser makes sense for one you keep for things you don't want
+to do during a session. Ending up in it is usually an accident, like a link
+opening in the wrong browser, so OnTask tells you quickly, whatever the site.
+Approving a browser, on the other hand, approves nothing on websites, because
+a browser is a way to reach any site, good or bad; list the sites you work in
+instead.
+
+Where there is no site to go by, the browser is an ordinary app and its rule
+counts either way: its new tab page or an empty window, a tab OnTask couldn't
+read, and any browser whose tab tracking is off in Settings → General.
 
 ### Answering No
 

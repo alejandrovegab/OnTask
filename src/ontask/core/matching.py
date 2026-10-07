@@ -67,6 +67,24 @@ class Rule:
         """Longer, more qualified patterns win over broad ones."""
         return len(self.pattern) + (10 if "/" in self.pattern else 0)
 
+    def rank(self, target: FocusTarget) -> tuple[int, int]:
+        """How closely this rule, which matches `target`, picks it out.
+
+        Higher wins. Site rules go by specificity. App rules first go by how
+        they matched: the exact app (its bundle ID) beats a name, and a name
+        beats a wildcard, so `app:com.apple.Notes` beats `app:Notes`, which
+        beats `app:*notes*`. Within the same level the longer rule wins.
+        """
+        if self.kind == "site":
+            return (0, self.specificity)
+        if "*" in self.pattern or "?" in self.pattern:
+            level = 1
+        elif self.pattern == (target.bundle_id or "").lower():
+            level = 3
+        else:
+            level = 2
+        return (level, self.specificity)
+
     def matches(self, target: FocusTarget) -> bool:
         if self.kind == "app":
             return self._matches_app(target)
@@ -122,10 +140,10 @@ def parse_rules(entries) -> list[Rule]:
     return rules
 
 
-def best_match(rules: list[Rule], target: FocusTarget) -> Rule | None:
-    """The most specific matching rule, so site rules can override app rules."""
-    matches = [r for r in rules if r.matches(target)]
-    return max(matches, key=lambda r: r.specificity) if matches else None
+def best_match(rules: list[Rule], target: FocusTarget, kind: str | None = None) -> Rule | None:
+    """The matching rule that picks `target` out most closely, of `kind` if given."""
+    matches = [r for r in rules if (kind is None or r.kind == kind) and r.matches(target)]
+    return max(matches, key=lambda r: r.rank(target)) if matches else None
 
 
 @dataclass(frozen=True)
@@ -143,19 +161,36 @@ class Classification:
 
 
 def classify(target: FocusTarget, approved, disapproved) -> Classification:
-    """Decide whether a target is allowed, explicitly blocked, or just unlisted.
+    """Decide whether a target is approved, disapproved, or not listed.
 
-    When both lists match, the more specific rule wins, so a profile can approve
-    ``github.com`` while still blocking ``github.com/trending``. A tie goes to
-    the block list.
+    When both lists match, the rule that picks the target out more closely
+    wins (see `Rule.rank`), so a profile can approve ``github.com`` while
+    disapproving ``github.com/trending``. A tie goes to the disapproved list.
+
+    On a website, a disapproved browser covers every site in it, approved or
+    not: being in that browser at all is what you wanted to hear about.
+    Otherwise site rules decide, and an approved browser counts for nothing
+    (approving Safari doesn't approve every site in it, so those are not
+    listed). Where there is no site to go by (the browser's new-tab page, a tab
+    that couldn't be read, or a browser whose tabs aren't tracked) the browser
+    is an ordinary app and its rule counts either way.
     """
     if target.is_unknown:
         # Detection failed (no permission, unsupported desktop). Staying quiet
         # beats nagging on every poll, so treat it as on-task.
         return Classification(APPROVED)
-    ok = best_match(parse_rules(approved), target)
-    bad = best_match(parse_rules(disapproved), target)
-    if bad and (not ok or bad.specificity >= ok.specificity):
+    approved_rules = parse_rules(approved)
+    disapproved_rules = parse_rules(disapproved)
+    if target.host:
+        browser = best_match(disapproved_rules, target, "app")
+        if browser is not None:
+            return Classification(DISAPPROVED, browser)
+        ok = best_match(approved_rules, target, "site")
+        bad = best_match(disapproved_rules, target, "site")
+    else:
+        ok = best_match(approved_rules, target)
+        bad = best_match(disapproved_rules, target)
+    if bad and (not ok or bad.rank(target) >= ok.rank(target)):
         return Classification(DISAPPROVED, bad)
     if ok:
         return Classification(APPROVED, ok)
@@ -196,6 +231,11 @@ def rule_actions(target: FocusTarget, approved, disapproved) -> list[RuleAction]
     Not listed: approve or disapprove it. Listed: put it on the other list
     (just this site, or the broader rule that decided, whichever would work),
     or remove the rule that decided it. Nothing when nothing was detected.
+
+    On a website the browser's own rule is only ever offered for removal from
+    the disapproved list: approving a browser approves nothing on websites, and
+    a site isn't where you'd decide about a whole browser. Its new-tab page,
+    where the browser itself is in front, offers the rest.
     """
     if target.is_unknown:
         return []
@@ -214,11 +254,14 @@ def rule_actions(target: FocusTarget, approved, disapproved) -> list[RuleAction]
     ]
     if decided.rule is not None:
         actions.append(RuleAction(REMOVE, decided.rule.raw, LIST_NAMES[decided.status]))
-    if target.host and decided.status == APPROVED and decided.rule and decided.rule.kind == "app":
-        # The whole browser is approved. Disapproving or removing all of it
-        # from one tab is rarely meant, so that is left to Settings.
-        actions = [a for a in actions if a.rule != decided.rule.raw]
+    if target.host:
+        actions = [a for a in actions if a.verb == REMOVE or _kind(a.rule) != "app"]
     return actions
+
+
+def _kind(rule: str) -> str:
+    parsed = Rule.parse(rule)
+    return parsed.kind if parsed else ""
 
 
 def _flipping_rules(target, approved, disapproved, wanted, decider) -> list[str]:

@@ -141,8 +141,113 @@ class MatchingTest(unittest.TestCase):
     def test_unknown_target_is_left_alone(self):
         self.assertEqual(classify(FocusTarget(), ["app:Code"], []).status, APPROVED)
 
-    def test_browser_app_rule_covers_all_tabs(self):
-        self.assertEqual(classify(OTHER_UNLISTED, ["app:Safari"], []).status, APPROVED)
+    def test_an_approved_browser_leaves_unlisted_sites_not_listed(self):
+        self.assertEqual(classify(OTHER_UNLISTED, ["app:Safari"], []).status, UNAPPROVED)
+
+
+class BrowsersAndSitesTest(unittest.TestCase):
+    """On a website a disapproved browser covers everything; otherwise sites decide."""
+
+    SAFARI_NEW_TAB = FocusTarget(app_name="Safari", bundle_id="com.apple.Safari")
+
+    def status(self, target, approved, disapproved):
+        return classify(target, approved, disapproved).status
+
+    def test_a_disapproved_site_beats_an_approved_browser(self):
+        # The bug: "app:Safari" is longer than "site:x.com", so it used to win.
+        x = FocusTarget(app_name="Safari", bundle_id="com.apple.Safari", url="https://x.com/home")
+        self.assertEqual(self.status(x, ["app:Safari"], ["site:x.com"]), DISAPPROVED)
+
+    def test_a_disapproved_browser_covers_even_approved_sites(self):
+        # Being in that browser at all is what you wanted to hear about.
+        decided = classify(BLOCKED_SITE, ["site:youtube.com"], ["app:Safari"])
+        self.assertEqual(decided.status, DISAPPROVED)
+        self.assertEqual(decided.rule.raw, "app:Safari")
+
+    def test_a_disapproved_browser_decides_over_a_disapproved_site(self):
+        decided = classify(BLOCKED_SITE, [], ["site:youtube.com", "app:Safari"])
+        self.assertEqual(decided.rule.raw, "app:Safari")
+
+    def test_a_disapproved_browser_disapproves_unlisted_sites(self):
+        decided = classify(OTHER_UNLISTED, [], ["app:Safari"])
+        self.assertEqual(decided.status, DISAPPROVED)
+        self.assertEqual(decided.rule.raw, "app:Safari")
+
+    def test_an_approved_browser_counts_for_nothing_on_a_site(self):
+        decided = classify(OTHER_UNLISTED, ["app:Safari"], [])
+        self.assertEqual(decided.status, UNAPPROVED)
+        self.assertIsNone(decided.rule)
+
+    def test_site_rules_still_go_by_specificity(self):
+        trending = FocusTarget(app_name="Safari", url="https://github.com/trending")
+        self.assertEqual(
+            self.status(trending, ["app:Safari", "site:github.com/trending"], ["site:github.com"]),
+            APPROVED,
+        )
+
+    def test_without_a_site_the_browser_is_an_ordinary_app(self):
+        # New tab, an empty window, a tab that couldn't be read, or a browser
+        # whose tabs aren't tracked.
+        self.assertEqual(self.status(self.SAFARI_NEW_TAB, ["app:Safari"], []), APPROVED)
+        self.assertEqual(self.status(self.SAFARI_NEW_TAB, [], ["app:Safari"]), DISAPPROVED)
+        self.assertEqual(self.status(self.SAFARI_NEW_TAB, [], []), UNAPPROVED)
+
+    def test_site_rules_never_match_without_a_site(self):
+        self.assertEqual(self.status(self.SAFARI_NEW_TAB, ["site:youtube.com"], []), UNAPPROVED)
+
+    def test_an_unlisted_site_in_an_approved_browser_gets_the_off_task_minute(self):
+        cfg = make_config()
+        cfg.profile().approved.append("app:Safari")
+        prompt, waited = Harness(cfg).run_until_prompt(OTHER_UNLISTED)
+        self.assertEqual(prompt.prompt.kind, DISTRACTION)
+        self.assertAlmostEqual(waited, 60, delta=3)
+
+    def test_an_unlisted_site_in_a_disapproved_browser_gets_the_short_fuse(self):
+        cfg = make_config()
+        cfg.profile().disapproved.append("app:Safari")
+        prompt, waited = Harness(cfg).run_until_prompt(OTHER_UNLISTED)
+        self.assertEqual(prompt.prompt.kind, BLOCKED)
+        self.assertAlmostEqual(waited, 10, delta=3)
+
+
+class AppRankingTest(unittest.TestCase):
+    """Exact app (bundle ID) beats a name, which beats a wildcard."""
+
+    APPLE_NOTES = FocusTarget(app_name="Notes", bundle_id="com.apple.Notes")
+    OTHER_NOTES = FocusTarget(app_name="Notes", bundle_id="com.example.notes")
+
+    def status(self, target, approved, disapproved):
+        return classify(target, approved, disapproved).status
+
+    def test_the_exact_app_beats_a_name(self):
+        approved, disapproved = ["app:com.apple.Notes"], ["app:Notes"]
+        self.assertEqual(self.status(self.APPLE_NOTES, approved, disapproved), APPROVED)
+        self.assertEqual(self.status(self.OTHER_NOTES, approved, disapproved), DISAPPROVED)
+        approved, disapproved = ["app:Notes"], ["app:com.apple.Notes"]
+        self.assertEqual(self.status(self.APPLE_NOTES, approved, disapproved), DISAPPROVED)
+        self.assertEqual(self.status(self.OTHER_NOTES, approved, disapproved), APPROVED)
+
+    def test_a_name_beats_a_wildcard_even_a_longer_one(self):
+        slack = FocusTarget(app_name="Slack", bundle_id="com.tinyspeck.slackmacgap")
+        self.assertEqual(self.status(slack, ["app:Slack"], ["app:*slack*"]), APPROVED)
+        self.assertEqual(self.status(slack, ["app:*slack*"], ["app:Slack"]), DISAPPROVED)
+
+    def test_a_name_beats_everything(self):
+        self.assertEqual(self.status(APPROVED_APP, ["app:Code"], ["app:*"]), APPROVED)
+        self.assertEqual(self.status(UNLISTED_APP, ["app:Code"], ["app:*"]), DISAPPROVED)
+
+    def test_the_end_of_a_bundle_id_counts_as_a_name(self):
+        slack = FocusTarget(app_name="Slack", bundle_id="com.tinyspeck.slackmacgap")
+        self.assertEqual(
+            self.status(slack, ["app:com.tinyspeck.slackmacgap"], ["app:slackmacgap"]), APPROVED
+        )
+
+    def test_a_tie_still_goes_to_disapproved(self):
+        self.assertEqual(self.status(self.APPLE_NOTES, ["app:Notes"], ["app:notes"]), DISAPPROVED)
+        self.assertEqual(
+            self.status(self.APPLE_NOTES, ["app:com.apple.Notes"], ["app:com.apple.notes"]),
+            DISAPPROVED,
+        )
 
 
 class CadenceTest(unittest.TestCase):
@@ -793,16 +898,54 @@ class RuleActionsTest(unittest.TestCase):
             ],
         )
 
-    def test_an_app_rule_deciding_a_site_offers_the_site_or_the_app(self):
-        actions = _actions(BLOCKED_SITE, [], ["app:Safari"])
+    def test_a_disapproved_browser_on_a_site_offers_only_removing_it(self):
+        # Approving the site changes nothing (the browser covers it), and
+        # approving the whole browser is left to its new-tab page or Settings.
+        for approved in ([], ["site:youtube.com"]):
+            with self.subTest(approved=approved):
+                self.assertEqual(
+                    _actions(BLOCKED_SITE, approved, ["app:Safari"]),
+                    [("remove", "app:Safari", "disapproved")],
+                )
+
+    def test_every_browser_is_treated_alike(self):
+        # Nothing here is about Safari: any app rule matching the browser in
+        # front counts, whether it names the browser or its bundle ID.
+        browsers = [
+            ("Google Chrome", "com.google.Chrome", "app:Google Chrome"),
+            ("Zen", "app.zen-browser.zen", "app:Zen"),
+            ("Arc", "company.thebrowser.Browser", "app:company.thebrowser.Browser"),
+            ("Firefox", "org.mozilla.firefox", "app:Firefox"),
+        ]
+        for name, bundle, rule in browsers:
+            with self.subTest(browser=name):
+                site = FocusTarget(app_name=name, bundle_id=bundle, url="https://github.com/x")
+                self.assertEqual(classify(site, ["site:github.com"], [rule]).status, DISAPPROVED)
+                self.assertEqual(
+                    _actions(site, ["site:github.com"], [rule]), [("remove", rule, "disapproved")]
+                )
+                self.assertEqual(classify(site, [rule], []).status, UNAPPROVED)
+
+    def test_the_browsers_own_page_offers_every_browser_change(self):
+        new_tab = FocusTarget(app_name="Safari", bundle_id="com.apple.Safari")
         self.assertEqual(
-            [(verb, rule) for verb, rule, _ in actions],
-            [("approve", "site:youtube.com"), ("approve", "app:Safari"), ("remove", "app:Safari")],
+            _actions(new_tab, [], ["app:Safari"]),
+            [("approve", "app:Safari", "approved"), ("remove", "app:Safari", "disapproved")],
+        )
+        self.assertEqual(
+            _actions(new_tab, ["app:Safari"], []),
+            [("disapprove", "app:Safari", "disapproved"), ("remove", "app:Safari", "approved")],
         )
 
-    def test_an_approved_browser_offers_nothing_about_the_browser(self):
+    def test_an_approved_browser_leaves_the_site_to_be_listed(self):
         actions = _actions(BLOCKED_SITE, ["app:Safari"], [])
-        self.assertEqual(actions, [("disapprove", "site:youtube.com", "disapproved")])
+        self.assertEqual(
+            actions,
+            [
+                ("approve", "site:youtube.com", "approved"),
+                ("disapprove", "site:youtube.com", "disapproved"),
+            ],
+        )
 
     def test_the_same_rule_written_differently_is_offered_once(self):
         google = FocusTarget(app_name="Safari", url="https://www.google.com/search")
@@ -842,6 +985,12 @@ class RuleActionsTest(unittest.TestCase):
             (BLOCKED_SITE, ["app:Safari"], ["site:youtube.com"]),
             (BLOCKED_SITE, ["site:youtube.com/watch"], []),
             (APPROVED_APP, ["app:com.microsoft.VSCode"], []),
+            (BLOCKED_SITE, [], ["app:Safari"]),
+            (BLOCKED_SITE, ["app:Safari"], []),
+            (BLOCKED_SITE, ["site:youtube.com"], ["app:Safari"]),
+            (AppRankingTest.APPLE_NOTES, ["app:com.apple.Notes"], ["app:Notes"]),
+            (AppRankingTest.OTHER_NOTES, ["app:com.apple.Notes"], ["app:Notes"]),
+            (AppRankingTest.APPLE_NOTES, ["app:Notes"], ["app:*"]),
         ]
         for target, approved, disapproved in cases:
             before = classify(target, approved, disapproved).status
