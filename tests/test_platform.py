@@ -585,7 +585,22 @@ class MenuBarIdleTest(unittest.TestCase):
 class TimerInOpenMenuTest(unittest.TestCase):
     """macOS runs a separate mode while a menu is open; the clock must tick in it."""
 
-    def _fires_while_a_menu_is_open(self, keep_running: bool) -> int:
+    def setUp(self):
+        # The app object is what makes "common modes" include the menu-tracking
+        # mode. OnTask always has one; without it, as when this test ran on its
+        # own, no timer could fire with a menu open.
+        from AppKit import NSApplication
+
+        NSApplication.sharedApplication()
+
+    def _fires_while_a_menu_is_open(
+        self, keep_running: bool, seconds: float = 0.3, enough: int | None = None
+    ) -> int:
+        """Timer fires seen while the run loop stays in menu-tracking mode.
+
+        Stops early once `enough` have come in, so a slow CI machine gets more
+        time without slowing the test down anywhere else.
+        """
         import rumps
         from Foundation import NSDate, NSRunLoop
 
@@ -598,16 +613,22 @@ class TimerInOpenMenuTest(unittest.TestCase):
         if keep_running:
             keep_running_in_menus(timer)
         loop = NSRunLoop.currentRunLoop()
-        deadline = NSDate.dateWithTimeIntervalSinceNow_(0.3)
-        while deadline.timeIntervalSinceNow() > 0:
-            loop.runMode_beforeDate_("NSEventTrackingRunLoopMode", deadline)
+        deadline = NSDate.dateWithTimeIntervalSinceNow_(seconds)
+        while deadline.timeIntervalSinceNow() > 0 and (enough is None or len(fires) < enough):
+            loop.runMode_beforeDate_(
+                "NSEventTrackingRunLoopMode", NSDate.dateWithTimeIntervalSinceNow_(0.05)
+            )
         return len(fires)
 
     def test_a_plain_rumps_timer_waits_for_the_menu_to_close(self):
         self.assertEqual(self._fires_while_a_menu_is_open(keep_running=False), 0)
 
     def test_the_clock_keeps_ticking_with_the_menu_open(self):
-        self.assertGreater(self._fires_while_a_menu_is_open(keep_running=True), 2)
+        # Three ticks prove it keeps going. A busy CI machine once managed only
+        # two in 0.3 s, so it gets up to 2 s (about 40 ticks' worth).
+        self.assertGreaterEqual(
+            self._fires_while_a_menu_is_open(keep_running=True, seconds=2.0, enough=3), 3
+        )
 
 
 @unittest.skipUnless(sys.platform == "darwin", "macOS accessibility API")
