@@ -219,8 +219,10 @@ changes. If you close it with unsaved changes, whether with **Close**, the
 window's close button or ⌘Q, it asks whether to save them first.
 
 Changes you make from the menu while Settings is open, such as approving a site
-or switching profile, are saved straight away, and saving Settings keeps them:
-it saves only what you changed in the window.
+or switching profile, are saved straight away and show up in Settings within a
+second. Anything you haven't saved in Settings stays as you left it, and saving
+Settings keeps the menu's changes: it saves only what you changed in the
+window.
 
 Settings live in a JSON file you can also edit by hand; the running app picks up
 changes within one poll, no restart needed.
