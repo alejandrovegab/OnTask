@@ -139,8 +139,23 @@ Planned work, roughly in order. Each item lands as its own reviewed pull request
   cached rules, aiming for under 0.5% CPU during a session even on an old
   machine.
 - **Native macOS interface.** Settings and Statistics rebuilt in AppKit, with
-  the Liquid Glass look on macOS 26 and smooth native scrolling. Settings gains
-  search, per-setting reset, and undo for any change.
+  the Liquid Glass look on macOS 26 and smooth native scrolling. Settings saves
+  as you go, with no Save button, and gains search, per-setting reset, and undo
+  for any change.
+- **Easier rules.** Add apps and sites without typing:
+  - pick from your installed apps, or from what's open now and what OnTask saw
+    recently (the last 50, on your Mac only, and you can turn it off or clear
+    it);
+  - choose how much of a site a rule covers, from the whole site down to one
+    page;
+  - drag in an app or a link.
+
+  Lists show plain names with an App or Website tag, and there's a text view
+  for typing rules directly. Share a list with a friend as a file or as copied
+  text.
+- **Clearer browser rules.** On a website, only site rules decide. Disapproving
+  a whole browser still covers every site you haven't approved in it, but
+  approving a browser no longer approves its sites.
 - **Hotkeys without permissions.** System-registered shortcuts in place of a
   global keyboard listener, so no Accessibility access is needed. Adds a
   click-and-press shortcut editor and more actions.
@@ -158,7 +173,7 @@ Planned work, roughly in order. Each item lands as its own reviewed pull request
   encrypted with AES-256 using a key kept in the macOS keychain, and deletable
   by site or date range.
 - **Onboarding.** A guided first run for permissions (including notifications)
-  and browsers. A choice of living in the menu bar, the Dock, or a floating
+  and browsers, with buttons that open the right System Settings page. A choice of living in the menu bar, the Dock, or a floating
   timer.
 - **Windows.**
   - A tray, taskbar or floating timer.
