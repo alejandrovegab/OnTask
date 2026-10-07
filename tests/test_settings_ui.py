@@ -449,6 +449,111 @@ class UnsavedChangesTest(unittest.TestCase):
         self.assertEqual(saved.general.poll_seconds, 3)
         self.assertEqual(saved.profile_names(), ["Deep Work", "Writing"])
 
+    # -- live updates ------------------------------------------------------
+
+    def _approved_shown(self):
+        return _lines_of(self.window.approved_text)
+
+    def _show(self, name):
+        names = self.window.config.profile_names()
+        self.window.profile_list.selection_clear(0, "end")
+        self.window.profile_list.selection_set(names.index(name))
+        self.window._on_profile_selected()
+
+    def test_a_menu_approval_shows_up_in_the_list(self):
+        self._menu_approves("site:example.com")
+        self.assertTrue(self.window.check_file())
+        self.assertIn("site:example.com", self._approved_shown())
+        self.assertFalse(self.window.has_unsaved_changes())
+
+    def test_nothing_happens_while_the_file_is_unchanged(self):
+        self.assertFalse(self.window.check_file())
+
+    def test_the_windows_own_save_is_not_mistaken_for_a_change(self):
+        self.window.poll_var.set("3")
+        self.window.save()
+        self.assertFalse(self.window.check_file())
+
+    def test_an_unsaved_edit_survives_an_update_and_stays_unsaved(self):
+        self.window.poll_var.set("3")
+        self._menu_approves("site:example.com")
+        self.window.check_file()
+        self.assertEqual(self.window.poll_var.get(), "3")
+        self.assertTrue(self.window.has_unsaved_changes())
+        self._close_answering("dont_save")
+        saved = Config.load(self.path)
+        self.assertIn("site:example.com", saved.profile("Deep Work").approved)
+        self.assertEqual(saved.general.poll_seconds, 2)
+
+    def test_an_unsaved_rule_and_the_menus_rule_are_both_shown(self):
+        self._set_approved("\n".join([*self._approved_shown(), "app:Figma"]))
+        self._menu_approves("site:example.com")
+        self.window.check_file()
+        shown = self._approved_shown()
+        self.assertIn("app:Figma", shown)
+        self.assertIn("site:example.com", shown)
+        self.assertTrue(self.window.has_unsaved_changes())
+        self.window.save()
+        approved = Config.load(self.path).profile("Deep Work").approved
+        self.assertIn("app:Figma", approved)
+        self.assertIn("site:example.com", approved)
+
+    def test_the_profile_on_screen_stays_on_screen(self):
+        self._show("Writing")
+        self._menu_approves("site:example.com")  # to the active profile, Deep Work
+        self.window.check_file()
+        self.assertEqual(self.window.current_profile, "Writing")
+        self._show("Deep Work")
+        self.assertIn("site:example.com", self._approved_shown())
+
+    def test_a_profile_switch_from_the_menu_changes_nothing_unsaved(self):
+        other = Config.load(self.path)
+        other.active_profile = "Writing"
+        other.save()
+        self.window.check_file()
+        self.assertFalse(self.window.has_unsaved_changes())
+        self._close_answering("cancel")
+        self.assertTrue(self._closed())
+
+    def test_an_unsaved_rename_keeps_the_menus_rule(self):
+        from unittest import mock
+
+        with mock.patch("ontask.ui.tk.settings._ask_text", return_value="Focus"):
+            self.window.rename_profile()
+        self._menu_approves("site:example.com")
+        self.window.check_file()
+        self.assertEqual(self.window.current_profile, "Focus")
+        self.assertIn("site:example.com", self._approved_shown())
+        self.assertTrue(self.window.has_unsaved_changes())
+        self.window.save()
+        saved = Config.load(self.path)
+        self.assertEqual(saved.profile_names(), ["Focus", "Writing"])
+        self.assertIn("site:example.com", saved.profile("Focus").approved)
+
+    def test_a_second_menu_change_after_an_update_is_picked_up_too(self):
+        self._menu_approves("site:example.com")
+        self.window.check_file()
+        self._menu_approves("app:Figma")
+        self.assertTrue(self.window.check_file())
+        shown = self._approved_shown()
+        self.assertIn("site:example.com", shown)
+        self.assertIn("app:Figma", shown)
+
+    def test_an_invalid_box_holds_the_update_until_it_is_fixed(self):
+        self.window.distraction_var.set("soon")
+        self._menu_approves("site:example.com")
+        self.assertFalse(self.window.check_file())
+        self.window.distraction_var.set("90")
+        self.assertTrue(self.window.check_file())
+        self.assertIn("site:example.com", self._approved_shown())
+        self.assertEqual(self.window.distraction_var.get(), "90")
+
+    def test_a_damaged_file_leaves_the_window_alone(self):
+        before = self._approved_shown()
+        self.path.write_text("{not json")
+        self.assertFalse(self.window.check_file())
+        self.assertEqual(self._approved_shown(), before)
+
 
 @unittest.skipUnless(HAVE_TK, "no Tk display")
 class FirstRunWindowTest(unittest.TestCase):
@@ -497,6 +602,10 @@ class FirstRunWindowTest(unittest.TestCase):
         self.assertIn("app:Figma", saved.profile().approved)
         self.assertTrue(saved.setup_complete)
         self.assertEqual([b.bundle_id for b in saved.general.browsers], ["com.apple.Safari"])
+
+
+def _lines_of(widget):
+    return [line.strip() for line in widget.get("1.0", "end").splitlines() if line.strip()]
 
 
 if __name__ == "__main__":

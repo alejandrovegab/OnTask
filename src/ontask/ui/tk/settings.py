@@ -26,7 +26,7 @@ from ontask.core.config import (
     read_existing,
 )
 from ontask.ui.tk.browser_setup import BrowserList
-from ontask.ui.tk.window import bring_to_front, fit_to_screen, watch_raise
+from ontask.ui.tk.window import RAISE_POLL_MS, bring_to_front, fit_to_screen, watch_raise
 
 RULE_HELP = (
     "One rule per line.   app:Slack   site:github.com   site:*.google.com   "
@@ -306,18 +306,20 @@ class SettingsWindow:
 
     # -- load / save ------------------------------------------------------
 
-    def _load_into_widgets(self) -> None:
+    def _load_into_widgets(self, show: str | None = None) -> None:
+        """Fill every widget from self.config, showing the profile `show`.
+
+        Without `show`, or when it no longer exists, the active profile is shown.
+        """
         cfg = self.config
         self.profile_list.delete(0, "end")
         for profile in cfg.profiles:
             self.profile_list.insert("end", profile.name)
         self.current_profile = None
         if cfg.profiles:
-            index = (
-                max(0, cfg.profile_names().index(cfg.active_profile))
-                if cfg.active_profile in cfg.profile_names()
-                else 0
-            )
+            names = cfg.profile_names()
+            pick = show if show in names else cfg.active_profile
+            index = names.index(pick) if pick in names else 0
             self.profile_list.selection_set(index)
             self._show_profile(cfg.profiles[index].name)
 
@@ -365,6 +367,10 @@ class SettingsWindow:
         self.approved_text.insert("1.0", "\n".join(profile.approved))
         self.disapproved_text.delete("1.0", "end")
         self.disapproved_text.insert("1.0", "\n".join(profile.disapproved))
+        # Undo is for typing; it shouldn't step back into another profile's
+        # lists or past an update from the menu.
+        self.approved_text.edit_reset()
+        self.disapproved_text.edit_reset()
 
     def _stash_profile_text(self) -> None:
         """Copy the text boxes back into the profile before switching away."""
@@ -488,7 +494,7 @@ class SettingsWindow:
         except ValueError as exc:
             messagebox.showerror("OnTask", str(exc))
             return False
-        path = self.config.path or default_config_path()
+        path = self._path()
         latest = read_existing(path) or copy.deepcopy(self._saved)
         self.config = merge_edits(self._saved, edited, latest, self._origins)
         self.config.save(path)
@@ -528,6 +534,73 @@ class SettingsWindow:
         except ValueError:
             self._saved = copy.deepcopy(self.config)
         self._origins = {p.name: p.name for p in self.config.profiles}
+        self._file_stamp = _stamp(self._path())
+
+    def _path(self) -> Path:
+        return self.config.path or default_config_path()
+
+    # -- changes saved elsewhere --------------------------------------------
+
+    def watch_file(self) -> None:
+        """Keep the window in step with changes saved elsewhere, mostly the menu's."""
+
+        def check() -> None:
+            try:
+                self.check_file()
+                self.root.after(RAISE_POLL_MS, check)
+            except tk.TclError:
+                pass  # window closed
+
+        self.root.after(RAISE_POLL_MS, check)
+
+    def check_file(self) -> bool:
+        """Show changes saved to the file since the window last read or wrote it.
+
+        Approving a site from the menu, for one, adds it to the list here too.
+        Edits not yet saved in the window stay on top and stay unsaved, so
+        closing still asks about them, and only them. True when it updated.
+        """
+        stamp = _stamp(self._path())
+        if stamp == self._file_stamp:
+            return False
+        latest = read_existing(self._path())
+        if latest is None:
+            # Missing or damaged: keep showing what the window has.
+            self._file_stamp = stamp
+            return False
+        try:
+            edited = self._edited()
+        except ValueError:
+            return False  # tried again once every box holds a number
+        self._file_stamp = stamp
+        showing = self.current_profile
+        merged = merge_edits(self._saved, edited, latest, self._origins)
+        self._origins = self._origins_after(merged, latest)
+        # The file becomes the new point edits are measured from, read through
+        # the widgets as _mark_saved does; then the window's edits go on top.
+        self.config = latest
+        self._load_into_widgets()
+        try:
+            self._saved = self._edited()
+        except ValueError:
+            self._saved = copy.deepcopy(latest)
+        self.config = merged
+        self._load_into_widgets(show=showing)
+        self._flash("Updated with changes saved outside Settings.")
+        return True
+
+    def _origins_after(self, merged: Config, latest: Config) -> dict[str, str]:
+        """Profile origins once `latest` replaces the window's starting point."""
+        before = set(self._saved.profile_names())
+        on_disk = set(latest.profile_names())
+        origins = {}
+        for name in merged.profile_names():
+            origin = self._origins.get(name)
+            if origin is None and name in on_disk and name not in before:
+                origin = name  # added to the file by hand while the window was open
+            if origin in on_disk:
+                origins[name] = origin
+        return origins
 
     def _edited(self) -> Config:
         """The config the widgets would save. Raises ValueError on a bad value."""
@@ -652,6 +725,15 @@ def ask_save_changes(root: tk.Misc) -> str:
     return choice[0]
 
 
+def _stamp(path: Path) -> tuple[int, int, int] | None:
+    """Enough to tell that a file was rewritten, without reading it."""
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size, st.st_ino)
+
+
 def _lines(widget: tk.Text) -> list[str]:
     return [line.strip() for line in widget.get("1.0", "end").splitlines() if line.strip()]
 
@@ -701,6 +783,7 @@ def main(argv: list[str] | None = None) -> int:
     window = SettingsWindow(root, path)
     bring_to_front(root)
     watch_raise(root, window.config.path, ipc.RAISE_SETTINGS)
+    window.watch_file()
     root.mainloop()
     return 0
 
