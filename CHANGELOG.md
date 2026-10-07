@@ -21,9 +21,10 @@ first release will be 0.1.0.
   each is identified by its bundle ID, and the way its tab is read is worked out
   from the app itself.
 - Approve and disapprove rules for apps and sites, down to a path, where the
-  most specific rule wins; on a website, site rules beat an approved browser,
-  and a disapproved browser covers every site in it.
-  Profiles with their own lists.
+  most specific rule wins: for apps, the exact app (its bundle ID) beats a name,
+  which beats a wildcard. On a website, site rules beat an approved browser,
+  and a disapproved browser covers every site in it. Profiles with their own
+  lists.
 - An offer to approve an unlisted app or site after repeated *yes* answers.
 - Check-ins as a floating window, a notification banner with Yes/No buttons, or
   a banner that escalates to the window if ignored.
@@ -36,11 +37,13 @@ first release will be 0.1.0.
 - No window reading between sessions or while paused, and no once-a-second
   redraw; OnTask looks at the front window only when you open its menu.
 - Approving, disapproving and removing the current app or site from the menu.
-  The menu offers only changes that would change its status, names the rule it
-  would remove, and confirms with plain names ("Added Messages to the
-  disapproved list for Deep Work.").
+  The menu offers to approve or disapprove only where that would change its
+  status, names the rule it would remove, and confirms with plain names ("Added
+  Messages to the disapproved list for Deep Work.").
 - **Permissions...** in the menu, showing each grant and how to fix a missing
   one.
+- Settings shows changes made from the menu while it's open, keeps them when
+  you save, and asks before closing with unsaved changes.
 - A signed, double-clickable `OnTask.app` built by `scripts/build-mac-app.sh`.
 - Windows and Linux: a control window with app-level tracking.
 

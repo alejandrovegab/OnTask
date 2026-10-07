@@ -79,8 +79,8 @@ were in at the moment you open the menu. To check a rule, switch to the app or
 site and click the menu bar icon. Between sessions, and while paused, that is
 the only time OnTask looks at your windows.
 
-The list items below it only ever offer a change that would change that
-status. Usually Approve or Disapprove adds the site or app itself. If a more
+The list items below it offer Approve or Disapprove only where that would
+change that status. Usually Approve or Disapprove adds the site or app itself. If a more
 specific rule decided, say `github.com/trending` is disapproved while
 `github.com` is approved, adding the site would change nothing, so the item
 offers that rule instead and moves it to the other list. On a site inside a
@@ -89,8 +89,11 @@ broader rule (`docs.google.com` with `google.com` disapproved), you get both:
 **Approve google.com** moves the whole site to the approved list. On a website,
 the only browser item the menu offers is removing a disapproved browser from
 the disapproved list (see [Browsers and sites](#browsers-and-sites)); approve or
-disapprove a browser itself from its new tab page, or in Settings. When OnTask
-can't tell what is in front, a greyed-out "Nothing to approve or
+disapprove a browser itself from its new tab page, or in Settings. **Remove**
+takes away the rule that decided. If a broader rule on the same list also
+covers what you're on, say `github.com` as well as `github.com/anthropics`, that
+one takes over, so the status can stay the same. When OnTask can't tell what is
+in front, a greyed-out "Nothing to approve or
 disapprove" takes the items' place.
 
 ### Hotkeys

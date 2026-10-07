@@ -35,9 +35,9 @@ wander somewhere off-limits and it notices within seconds.
 - **See what it sees.** Click the menu bar icon and it names the app or site
   you're on and how your rules treat it: approved, disapproved or not listed.
   Change that right there, with or without a session running: the menu offers
-  only what would change it (approve, disapprove, or remove the rule that
-  decided), and confirms in plain words ("Added Messages to the disapproved
-  list").
+  to approve or disapprove only where that would change it, or to remove the
+  rule that decided, and confirms in plain words ("Added Messages to the
+  disapproved list").
 - **Your choice of prompt.** A floating window, a notification banner with
   Yes/No buttons, or a banner that escalates to the window if ignored.
 - **Statistics.** Session time, time lost to distractions and where it went,
@@ -144,17 +144,19 @@ Planned work, roughly in order. Each item lands as its own reviewed pull request
   the Liquid Glass look on macOS 26 and smooth native scrolling. Settings saves
   as you go, with no Save button, and gains search, per-setting reset, and undo
   for any change.
-- **Easier rules.** Add apps and sites without typing:
-  - pick from your installed apps, or from what's open now and what OnTask saw
-    recently (the last 50, on your Mac only, and you can turn it off or clear
-    it);
+- **Easier rules.** One Add window with a search box, so you rarely type a
+  rule:
+  - pick from what's open now, what OnTask saw recently (the last 50, on your
+    Mac only, and you can turn it off or clear it), or any installed app;
   - choose how much of a site a rule covers, from the whole site down to one
     page;
   - drag in an app or a link.
 
-  Lists show plain names with an App or Website tag, and there's a text view
-  for typing rules directly. Share a list with a friend as a file or as copied
-  text.
+  Lists show plain names and icons with an App or Website tag. Apps added this
+  way are pinned to that exact app, so two apps with the same name can't be
+  mixed up, and a rule whose app is no longer installed is marked Missing. An
+  Edit as Text view is there for typing rules directly, and you can share a
+  list with a friend as a file or as copied text.
 - **Hotkeys without permissions.** System-registered shortcuts in place of a
   global keyboard listener, so no Accessibility access is needed. Adds a
   click-and-press shortcut editor and more actions.
@@ -172,8 +174,8 @@ Planned work, roughly in order. Each item lands as its own reviewed pull request
   encrypted with AES-256 using a key kept in the macOS keychain, and deletable
   by site or date range.
 - **Onboarding.** A guided first run for permissions (including notifications)
-  and browsers, with buttons that open the right System Settings page. A choice of living in the menu bar, the Dock, or a floating
-  timer.
+  and browsers, with buttons that open the right System Settings page. A choice
+  of living in the menu bar, the Dock, or a floating timer.
 - **Windows.**
   - A tray, taskbar or floating timer.
   - Site tracking through UI Automation.
