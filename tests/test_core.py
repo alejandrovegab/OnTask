@@ -1,11 +1,12 @@
 """Timing and rule tests. Everything runs on a fake clock, so it is instant."""
 
+import copy
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from ontask.core.config import Config, Profile
+from ontask.core.config import Config, Profile, merge_edits, read_existing
 from ontask.core.engine import (
     BLOCKED,
     CADENCE,
@@ -416,6 +417,132 @@ class ConfigTest(unittest.TestCase):
             loaded = Config.load(path)
             self.assertEqual(loaded.reminder.intervals_minutes, [1, 2, 3])
             self.assertEqual(loaded.active_profile, "Test")
+
+
+class MergeEditsTest(unittest.TestCase):
+    """Settings saves only what changed in its window, over the file as it is now.
+
+    `base` is what the window opened with, `mine` what it holds at Save, and
+    `theirs` the file after the menu wrote to it meanwhile.
+    """
+
+    def setUp(self):
+        self.base = Config()
+        self.mine = copy.deepcopy(self.base)
+        self.theirs = copy.deepcopy(self.base)
+
+    def merged(self, origins=None):
+        if origins is None:
+            origins = {p.name: p.name for p in self.base.profiles}
+        return merge_edits(self.base, self.mine, self.theirs, origins)
+
+    def test_a_menu_rule_survives_an_unrelated_setting_change(self):
+        self.theirs.profile("Deep Work").approved.append("site:example.com")
+        self.mine.general.poll_seconds = 3
+        out = self.merged()
+        self.assertIn("site:example.com", out.profile("Deep Work").approved)
+        self.assertEqual(out.general.poll_seconds, 3)
+
+    def test_rules_added_on_both_sides_are_all_kept(self):
+        self.theirs.profile("Deep Work").approved.append("site:example.com")
+        self.mine.profile("Deep Work").approved.append("site:reddit.com/r/python")
+        approved = self.merged().profile("Deep Work").approved
+        self.assertIn("site:example.com", approved)
+        self.assertIn("site:reddit.com/r/python", approved)
+
+    def test_a_rule_removed_in_the_window_stays_removed(self):
+        self.mine.profile("Deep Work").disapproved.remove("site:x.com")
+        self.theirs.profile("Deep Work").disapproved.append("app:Messages")
+        disapproved = self.merged().profile("Deep Work").disapproved
+        self.assertNotIn("site:x.com", disapproved)
+        self.assertIn("app:Messages", disapproved)
+
+    def test_a_menu_move_survives_when_the_window_left_both_lists_alone(self):
+        # The menu disapproves an approved site: it leaves one list, joins the other.
+        dw = self.theirs.profile("Deep Work")
+        dw.approved.remove("site:github.com")
+        dw.disapproved.append("site:github.com")
+        out = self.merged().profile("Deep Work")
+        self.assertNotIn("site:github.com", out.approved)
+        self.assertIn("site:github.com", out.disapproved)
+
+    def test_the_windows_order_is_kept_when_the_menu_did_not_touch_the_list(self):
+        self.mine.profile("Deep Work").approved.reverse()
+        self.assertEqual(
+            self.merged().profile("Deep Work").approved, self.mine.profile("Deep Work").approved
+        )
+
+    def test_a_rename_keeps_rules_the_menu_added_under_the_old_name(self):
+        self.theirs.profile("Deep Work").approved.append("site:example.com")
+        self.mine.profile("Deep Work").name = "Focus"
+        self.mine.active_profile = "Focus"
+        out = self.merged({"Focus": "Deep Work", "Writing": "Writing"})
+        self.assertEqual(out.profile_names(), ["Focus", "Writing"])
+        self.assertIn("site:example.com", out.profile("Focus").approved)
+        self.assertEqual(out.active_profile, "Focus")
+
+    def test_the_menus_profile_switch_stands(self):
+        self.theirs.active_profile = "Writing"
+        self.mine.general.play_sound = not self.base.general.play_sound
+        self.assertEqual(self.merged().active_profile, "Writing")
+
+    def test_the_menus_profile_switch_follows_a_rename(self):
+        self.theirs.active_profile = "Writing"
+        self.mine.profile("Writing").name = "Essays"
+        self.assertEqual(
+            self.merged({"Deep Work": "Deep Work", "Essays": "Writing"}).active_profile, "Essays"
+        )
+
+    def test_a_deleted_profile_stays_deleted(self):
+        self.theirs.profile("Writing").approved.append("app:Ulysses")
+        self.mine.profiles = [p for p in self.mine.profiles if p.name != "Writing"]
+        out = self.merged({"Deep Work": "Deep Work"})
+        self.assertEqual(out.profile_names(), ["Deep Work"])
+
+    def test_deleting_the_active_profile_moves_to_the_window_choice(self):
+        self.mine.profiles = [p for p in self.mine.profiles if p.name != "Deep Work"]
+        self.mine.active_profile = "Writing"
+        out = self.merged({"Writing": "Writing"})
+        self.assertEqual(out.active_profile, "Writing")
+
+    def test_a_new_profile_is_added(self):
+        self.mine.profiles.append(Profile(name="Reading", approved=["app:Books"]))
+        out = self.merged()
+        self.assertEqual(out.profile("Reading").approved, ["app:Books"])
+
+    def test_restoring_defaults_replaces_the_menus_rules(self):
+        self.base.profile("Deep Work").approved.append("app:Figma")
+        self.theirs = copy.deepcopy(self.base)
+        self.theirs.profile("Deep Work").approved.append("site:example.com")
+        self.mine = Config()
+        out = self.merged({})
+        self.assertEqual(out.to_dict(), Config().to_dict())
+
+    def test_the_window_wins_a_setting_both_changed(self):
+        self.theirs.general.poll_seconds = 5
+        self.mine.general.poll_seconds = 3
+        self.assertEqual(self.merged().general.poll_seconds, 3)
+
+    def test_a_setting_the_window_left_alone_keeps_the_files_value(self):
+        self.theirs.general.poll_seconds = 5
+        self.mine.reminder.clock_penalty.fixed_seconds = 45
+        out = self.merged()
+        self.assertEqual(out.general.poll_seconds, 5)
+        self.assertEqual(out.reminder.clock_penalty.fixed_seconds, 45)
+
+    def test_first_run_finishing_meanwhile_is_kept(self):
+        self.theirs.setup_complete = True
+        self.mine.general.play_sound = not self.base.general.play_sound
+        self.assertTrue(self.merged().setup_complete)
+
+    def test_reading_never_creates_or_moves_a_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = Path(tmp) / "config.json"
+            self.assertIsNone(read_existing(missing))
+            self.assertFalse(missing.exists())
+            missing.write_text("{not json")
+            self.assertIsNone(read_existing(missing))
+            self.assertEqual(missing.read_text(), "{not json")
 
 
 class ConfigMigrationTest(unittest.TestCase):

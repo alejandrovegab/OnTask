@@ -505,3 +505,102 @@ class Config:
 
     def profile_names(self) -> list[str]:
         return [p.name for p in self.profiles]
+
+
+# -- merging edits ----------------------------------------------------------
+
+
+def read_existing(path: Path) -> Config | None:
+    """The config on disk, or None when it is missing or unreadable.
+
+    Unlike `Config.load` this never writes: no defaults file is created and a
+    damaged file is left where it is.
+    """
+    try:
+        cfg = Config.from_dict(json.loads(read_capped(path, MAX_CONFIG_BYTES)))
+    except (json.JSONDecodeError, OSError, ValueError, TypeError, AttributeError):
+        return None
+    cfg.path = path
+    return cfg
+
+
+def merge_edits(base: Config, edited: Config, latest: Config, origins: dict[str, str]) -> Config:
+    """Apply the changes made between `base` and `edited` on top of `latest`.
+
+    Settings is open while the menu keeps writing the same file (approving a
+    site, switching profile), so writing the window's copy back whole would
+    undo those changes. Only what changed in the window is carried over:
+
+    * a setting the window changed takes the window's value; one it left alone
+      keeps whatever is on disk now;
+    * a rule list gets the window's additions and removals, so rules the menu
+      added meanwhile stay;
+    * `origins` maps each profile name in `edited` to the name it had in
+      `base`, so a renamed profile keeps rules added to it under its old name.
+      A profile without an origin is new; one in `base` with no profile
+      pointing back at it was deleted.
+    """
+    b, e, r = base.to_dict(), edited.to_dict(), latest.to_dict()
+    for key in ("version", "setup_complete"):
+        if e[key] != b[key]:
+            r[key] = e[key]
+    for section in ("general", "reminder"):
+        _merge_fields(b[section], e[section], r[section])
+
+    base_by_name = {p["name"]: p for p in b["profiles"]}
+    latest_by_name = {p["name"]: p for p in r["profiles"]}
+    renamed: dict[str, str] = {}
+    profiles = []
+    for mine in e["profiles"]:
+        origin = origins.get(mine["name"])
+        old = base_by_name.get(origin) if origin else None
+        theirs = latest_by_name.get(origin) if origin else None
+        if old is None or theirs is None:
+            profiles.append(mine)
+            continue
+        renamed[origin] = mine["name"]
+        profiles.append(
+            {
+                "name": mine["name"],
+                "approved": _merge_list(old["approved"], mine["approved"], theirs["approved"]),
+                "disapproved": _merge_list(
+                    old["disapproved"], mine["disapproved"], theirs["disapproved"]
+                ),
+            }
+        )
+    # Profiles written by hand while the window was open are left alone.
+    profiles += [p for p in r["profiles"] if p["name"] not in base_by_name]
+    r["profiles"] = profiles
+
+    # Settings has no control for the active profile, but renaming or deleting
+    # it, or restoring the defaults, changes it; otherwise the menu's choice
+    # stands, under its new name if the window renamed it.
+    if e["active_profile"] != renamed.get(b["active_profile"], b["active_profile"]):
+        r["active_profile"] = e["active_profile"]
+    else:
+        r["active_profile"] = renamed.get(r["active_profile"], r["active_profile"])
+
+    merged = Config.from_dict(r)
+    merged.path = latest.path or edited.path
+    return merged
+
+
+def _merge_fields(base: dict[str, Any], edited: dict[str, Any], latest: dict[str, Any]) -> None:
+    for key, value in edited.items():
+        if isinstance(value, dict) and isinstance(latest.get(key), dict):
+            _merge_fields(base.get(key) or {}, value, latest[key])
+        elif value != base.get(key):
+            latest[key] = value
+
+
+def _merge_list(base: list[str], edited: list[str], latest: list[str]) -> list[str]:
+    if latest == base:
+        return list(edited)
+    if edited == base:
+        return list(latest)
+    removed = set(base) - set(edited)
+    merged = [rule for rule in latest if rule not in removed]
+    for rule in edited:
+        if rule not in base and rule not in merged:
+            merged.append(rule)
+    return merged
