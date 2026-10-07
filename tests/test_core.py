@@ -908,6 +908,24 @@ class RuleActionsTest(unittest.TestCase):
                     [("remove", "app:Safari", "disapproved")],
                 )
 
+    def test_every_browser_is_treated_alike(self):
+        # Nothing here is about Safari: any app rule matching the browser in
+        # front counts, whether it names the browser or its bundle ID.
+        browsers = [
+            ("Google Chrome", "com.google.Chrome", "app:Google Chrome"),
+            ("Zen", "app.zen-browser.zen", "app:Zen"),
+            ("Arc", "company.thebrowser.Browser", "app:company.thebrowser.Browser"),
+            ("Firefox", "org.mozilla.firefox", "app:Firefox"),
+        ]
+        for name, bundle, rule in browsers:
+            with self.subTest(browser=name):
+                site = FocusTarget(app_name=name, bundle_id=bundle, url="https://github.com/x")
+                self.assertEqual(classify(site, ["site:github.com"], [rule]).status, DISAPPROVED)
+                self.assertEqual(
+                    _actions(site, ["site:github.com"], [rule]), [("remove", rule, "disapproved")]
+                )
+                self.assertEqual(classify(site, [rule], []).status, UNAPPROVED)
+
     def test_the_browsers_own_page_offers_every_browser_change(self):
         new_tab = FocusTarget(app_name="Safari", bundle_id="com.apple.Safari")
         self.assertEqual(
