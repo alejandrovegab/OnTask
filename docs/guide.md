@@ -197,6 +197,12 @@ disapproved list wins. Approving a browser itself (`app:Safari`) approves every
 tab in it that you haven't listed; a site you've disapproved still counts as
 disapproved.
 
+OnTask's own windows, Settings and Statistics, count as an app called OnTask,
+like any other app: tweaking settings or reading your statistics is easy to
+drift into, so it isn't a free pass. If that time is part of your work, approve
+OnTask (`app:OnTask`). The check-in window is different: while it waits for
+your answer, nothing counts.
+
 ### Answering No
 
 A No means the stretch that just ended was not really work, so by default that
