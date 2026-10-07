@@ -108,7 +108,7 @@ When the check-in window is focused, plain `Y` and `N` work too. Rebind or blank
 them out in Settings → General using [pynput syntax](https://pynput.readthedocs.io/en/latest/keyboard.html#global-hotkeys),
 e.g. `<ctrl>+<alt>+f`.
 
-### Browsers
+### Browser tracking
 
 On first launch OnTask asks which browsers you use, listing the ones macOS
 reports as installed with their own icons. Change the answer at any time in
@@ -209,7 +209,7 @@ drift into, so it isn't a free pass. If that time is part of your work, approve
 OnTask (`app:OnTask`). The check-in window is different: while it waits for
 your answer, nothing counts.
 
-### Browsers and sites
+#### Browsers and sites
 
 On a website, **a disapproved browser covers every site in it**, even sites
 you've approved. Otherwise **site rules decide**, and an approved browser
