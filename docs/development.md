@@ -64,7 +64,7 @@ src/ontask/
     ladder.py      the escalating interval
     matching.py    rule syntax, app/site classification, and which list
                    changes the menu offers (rule_actions)
-    config.py      settings model, defaults, migrations, atomic save
+    config.py      settings model, defaults, migrations, atomic save, merging edits
     browsers.py    browser identity: bundle inspection and URL-route detection
   focus/           FocusTarget and per-platform provider selection
   platform/

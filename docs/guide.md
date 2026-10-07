@@ -215,8 +215,12 @@ the running session. Add, duplicate, rename, and delete them in Settings.
 ## Settings reference
 
 The Settings window never saves on its own: click **Save** to keep your
-changes. If you close it without saving, whether with **Close** or the window's
-close button, your changes are lost.
+changes. If you close it with unsaved changes, whether with **Close**, the
+window's close button or ⌘Q, it asks whether to save them first.
+
+Changes you make from the menu while Settings is open, such as approving a site
+or switching profile, are saved straight away, and saving Settings keeps them:
+it saves only what you changed in the window.
 
 Settings live in a JSON file you can also edit by hand; the running app picks up
 changes within one poll, no restart needed.
