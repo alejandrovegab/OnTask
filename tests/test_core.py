@@ -146,7 +146,7 @@ class MatchingTest(unittest.TestCase):
 
 
 class BrowsersAndSitesTest(unittest.TestCase):
-    """On a website the site rules decide; the browser's rule only disapproves."""
+    """On a website a disapproved browser covers everything; otherwise sites decide."""
 
     SAFARI_NEW_TAB = FocusTarget(app_name="Safari", bundle_id="com.apple.Safari")
 
@@ -158,11 +158,15 @@ class BrowsersAndSitesTest(unittest.TestCase):
         x = FocusTarget(app_name="Safari", bundle_id="com.apple.Safari", url="https://x.com/home")
         self.assertEqual(self.status(x, ["app:Safari"], ["site:x.com"]), DISAPPROVED)
 
-    def test_an_approved_site_beats_a_disapproved_browser(self):
-        # "app:com.apple.Safari" is longer than "site:youtube.com".
-        self.assertEqual(
-            self.status(BLOCKED_SITE, ["site:youtube.com"], ["app:com.apple.Safari"]), APPROVED
-        )
+    def test_a_disapproved_browser_covers_even_approved_sites(self):
+        # Being in that browser at all is what you wanted to hear about.
+        decided = classify(BLOCKED_SITE, ["site:youtube.com"], ["app:Safari"])
+        self.assertEqual(decided.status, DISAPPROVED)
+        self.assertEqual(decided.rule.raw, "app:Safari")
+
+    def test_a_disapproved_browser_decides_over_a_disapproved_site(self):
+        decided = classify(BLOCKED_SITE, [], ["site:youtube.com", "app:Safari"])
+        self.assertEqual(decided.rule.raw, "app:Safari")
 
     def test_a_disapproved_browser_disapproves_unlisted_sites(self):
         decided = classify(OTHER_UNLISTED, [], ["app:Safari"])
@@ -177,7 +181,7 @@ class BrowsersAndSitesTest(unittest.TestCase):
     def test_site_rules_still_go_by_specificity(self):
         trending = FocusTarget(app_name="Safari", url="https://github.com/trending")
         self.assertEqual(
-            self.status(trending, ["site:github.com/trending"], ["app:Safari", "site:github.com"]),
+            self.status(trending, ["app:Safari", "site:github.com/trending"], ["site:github.com"]),
             APPROVED,
         )
 
@@ -894,13 +898,25 @@ class RuleActionsTest(unittest.TestCase):
             ],
         )
 
-    def test_a_disapproved_browser_on_a_site_offers_the_site_or_removing_the_browser(self):
-        # Approving Safari would leave the site not listed, not approved, so it
-        # isn't offered.
-        actions = _actions(BLOCKED_SITE, [], ["app:Safari"])
+    def test_a_disapproved_browser_on_a_site_offers_only_removing_it(self):
+        # Approving the site changes nothing (the browser covers it), and
+        # approving the whole browser is left to its new-tab page or Settings.
+        for approved in ([], ["site:youtube.com"]):
+            with self.subTest(approved=approved):
+                self.assertEqual(
+                    _actions(BLOCKED_SITE, approved, ["app:Safari"]),
+                    [("remove", "app:Safari", "disapproved")],
+                )
+
+    def test_the_browsers_own_page_offers_every_browser_change(self):
+        new_tab = FocusTarget(app_name="Safari", bundle_id="com.apple.Safari")
         self.assertEqual(
-            [(verb, rule) for verb, rule, _ in actions],
-            [("approve", "site:youtube.com"), ("remove", "app:Safari")],
+            _actions(new_tab, [], ["app:Safari"]),
+            [("approve", "app:Safari", "approved"), ("remove", "app:Safari", "disapproved")],
+        )
+        self.assertEqual(
+            _actions(new_tab, ["app:Safari"], []),
+            [("disapprove", "app:Safari", "disapproved"), ("remove", "app:Safari", "approved")],
         )
 
     def test_an_approved_browser_leaves_the_site_to_be_listed(self):

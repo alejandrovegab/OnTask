@@ -167,13 +167,13 @@ def classify(target: FocusTarget, approved, disapproved) -> Classification:
     wins (see `Rule.rank`), so a profile can approve ``github.com`` while
     disapproving ``github.com/trending``. A tie goes to the disapproved list.
 
-    On a website, site rules come first: any matching site rule beats the
-    browser's own rule. With no site rule, an approved browser counts for
-    nothing (approving Safari doesn't approve every site in it, so those are
-    not listed), while a disapproved browser still disapproves the site. Where
-    there is no site to go by (the browser's new-tab page, a tab that couldn't
-    be read, or a browser whose tabs aren't tracked) the browser is an
-    ordinary app and its rule counts either way.
+    On a website, a disapproved browser covers every site in it, approved or
+    not: being in that browser at all is what you wanted to hear about.
+    Otherwise site rules decide, and an approved browser counts for nothing
+    (approving Safari doesn't approve every site in it, so those are not
+    listed). Where there is no site to go by (the browser's new-tab page, a tab
+    that couldn't be read, or a browser whose tabs aren't tracked) the browser
+    is an ordinary app and its rule counts either way.
     """
     if target.is_unknown:
         # Detection failed (no permission, unsupported desktop). Staying quiet
@@ -182,13 +182,11 @@ def classify(target: FocusTarget, approved, disapproved) -> Classification:
     approved_rules = parse_rules(approved)
     disapproved_rules = parse_rules(disapproved)
     if target.host:
+        browser = best_match(disapproved_rules, target, "app")
+        if browser is not None:
+            return Classification(DISAPPROVED, browser)
         ok = best_match(approved_rules, target, "site")
         bad = best_match(disapproved_rules, target, "site")
-        if ok is None and bad is None:
-            browser = best_match(disapproved_rules, target, "app")
-            if browser is not None:
-                return Classification(DISAPPROVED, browser)
-            return Classification(UNAPPROVED)
     else:
         ok = best_match(approved_rules, target)
         bad = best_match(disapproved_rules, target)
@@ -233,6 +231,11 @@ def rule_actions(target: FocusTarget, approved, disapproved) -> list[RuleAction]
     Not listed: approve or disapprove it. Listed: put it on the other list
     (just this site, or the broader rule that decided, whichever would work),
     or remove the rule that decided it. Nothing when nothing was detected.
+
+    On a website the browser's own rule is only ever offered for removal from
+    the disapproved list: approving a browser approves nothing on websites, and
+    a site isn't where you'd decide about a whole browser. Its new-tab page,
+    where the browser itself is in front, offers the rest.
     """
     if target.is_unknown:
         return []
@@ -251,7 +254,14 @@ def rule_actions(target: FocusTarget, approved, disapproved) -> list[RuleAction]
     ]
     if decided.rule is not None:
         actions.append(RuleAction(REMOVE, decided.rule.raw, LIST_NAMES[decided.status]))
+    if target.host:
+        actions = [a for a in actions if a.verb == REMOVE or _kind(a.rule) != "app"]
     return actions
+
+
+def _kind(rule: str) -> str:
+    parsed = Rule.parse(rule)
+    return parsed.kind if parsed else ""
 
 
 def _flipping_rules(target, approved, disapproved, wanted, decider) -> list[str]:
